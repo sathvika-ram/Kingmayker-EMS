@@ -1,0 +1,67 @@
+import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { LogOut, UserPlus, History, Search, ClipboardEdit } from 'lucide-react';
+import EnrollmentForm from '../components/EnrollmentForm';
+import EnrollmentHistory from '../components/EnrollmentHistory';
+
+export default function CoordinatorDashboard() {
+  const { user, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState('enroll'); // enroll or history
+  const [search, setSearch] = useState('');
+
+  const handleSearch = (event) => {
+    const value = event.target.value;
+    setSearch(value);
+    if (value.trim()) setActiveTab('history');
+  };
+
+  return (
+    <div className="coordinator-shell min-h-screen flex flex-col">
+      {/* Mobile-friendly Header */}
+      <header className="coordinator-header text-[#173b35] p-4 border-b border-[#e4ebe7] sticky top-0 z-10 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <img src="/India.jfif" alt="India" className="coordinator-logo" />
+          <div>
+            <p className="coordinator-brand">Kingmayker EMS</p>
+            <h1 className="text-xl font-bold">Coordinator Portal</h1>
+            <p className="text-xs text-gray-500">{user?.assigned_constituency} Constituency</p>
+          </div>
+        </div>
+        <div className="coordinator-search"><Search size={16} /><input value={search} onChange={handleSearch} placeholder="Search by Voter ID" aria-label="Search by Voter ID" /></div>
+        <button onClick={logout} title="Sign out" aria-label="Sign out" className="p-2 text-gray-500 hover:bg-green-50 rounded-lg transition-colors">
+          <LogOut size={20} />
+        </button>
+      </header>
+
+      {/* Main Content */}
+      <main className="coordinator-main flex-1 w-full bg-white shadow-sm flex flex-col relative pb-20">
+        {activeTab === 'enroll' ? <EnrollmentForm /> : <EnrollmentHistory search={search} statusOnly={activeTab === 'status'} />}
+      </main>
+
+      {/* Bottom Navigation for Mobile */}
+      <nav className="coordinator-nav fixed bottom-0 w-full bg-white border-t border-gray-200 flex justify-around">
+        <button 
+          onClick={() => setActiveTab('enroll')}
+          className={`flex-1 flex flex-col items-center p-3 transition-colors ${activeTab === 'enroll' ? 'text-blue-600 border-t-2 border-blue-600' : 'text-gray-500'}`}
+        >
+          <UserPlus size={24} />
+          <span className="text-xs mt-1 font-medium">New Enroll</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('status')}
+          className={`flex-1 flex flex-col items-center p-3 transition-colors ${activeTab === 'status' ? 'text-blue-600 border-t-2 border-blue-600' : 'text-gray-500'}`}
+        >
+          <ClipboardEdit size={24} />
+          <span className="text-xs mt-1 font-medium">Edit status</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')}
+          className={`flex-1 flex flex-col items-center p-3 transition-colors ${activeTab === 'history' ? 'text-blue-600 border-t-2 border-blue-600' : 'text-gray-500'}`}
+        >
+          <History size={24} />
+          <span className="text-xs mt-1 font-medium">History</span>
+        </button>
+      </nav>
+    </div>
+  );
+}

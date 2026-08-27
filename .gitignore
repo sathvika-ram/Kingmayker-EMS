@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+frontend/node_modules/
+frontend/.env
+frontend/.env.*
+!.frontend/.env.example
+
+dist/
+build/
+.vite/
+*.log
