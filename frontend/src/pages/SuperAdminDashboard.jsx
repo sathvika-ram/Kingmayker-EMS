@@ -53,6 +53,10 @@ export default function SuperAdminDashboard() {
     axios.get(`${API}/geo/mandals`, { params: { constituency } }).then(result => setMandals(result.data || [])).catch(() => setError('Unable to load mandals.'));
   }, [constituency]);
   useEffect(() => { loadVoters(); }, [region, constituency, mandal, status]);
+  useEffect(() => {
+    const interval = setInterval(loadVoters, 10000);
+    return () => clearInterval(interval);
+  }, [region, constituency, mandal, status]);
 
   const total = voters.length;
   const approved = voters.filter(voter => voter.enrollment_status === 'approved').length;

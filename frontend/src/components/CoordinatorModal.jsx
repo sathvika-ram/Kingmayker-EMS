@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { X } from 'lucide-react';
 
@@ -8,11 +8,18 @@ export default function CoordinatorModal({ onClose }) {
     email: '',
     mobile_number: '',
     temp_password: '',
-    assigned_constituency: 'Warangal'
+    assigned_constituency: ''
   });
+  const [constituencies, setConstituencies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    axios.get('http://localhost:5000/api/geo/assemblies')
+      .then(response => setConstituencies(response.data || []))
+      .catch(() => setError('Failed to load constituencies.'));
+  }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -27,7 +34,7 @@ export default function CoordinatorModal({ onClose }) {
     try {
       await axios.post('http://localhost:5000/api/admin/create-coordinator', formData);
       setSuccess('Coordinator account created successfully!');
-      setFormData({ name: '', email: '', mobile_number: '', temp_password: '', assigned_constituency: 'Warangal' });
+      setFormData({ name: '', email: '', mobile_number: '', temp_password: '', assigned_constituency: '' });
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create account');
     } finally {
@@ -72,10 +79,9 @@ export default function CoordinatorModal({ onClose }) {
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Constituency</label>
-              <select name="assigned_constituency" value={formData.assigned_constituency} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500">
-                <option value="Warangal">Warangal</option>
-                <option value="Nalgonda">Nalgonda</option>
-                <option value="Khammam">Khammam</option>
+              <select name="assigned_constituency" required value={formData.assigned_constituency} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500">
+                <option value="">Select constituency</option>
+                {constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}
               </select>
             </div>
 

@@ -11,7 +11,7 @@ export default function EnrollmentForm() {
   const initialFormState = {
     voter_name: '', father_name: '', date_of_birth: '', mobile_number: '', email: '', gender: '', voter_id: '',
     citizenship_status: true, nationality: 'Indian', application_type: 'new',
-    region: user?.assigned_constituency || '', constituency: '', mandal: '', village: '',
+    region: '', constituency: user?.assigned_constituency || '', mandal: '', village: '',
     degree_qualification: '', university: '', college: '', course: '', graduation_year: '',
     form18_number: '', acknowledgement_number: '', reference_number: '', notes: '',
     complete_address: '', district: '', state: 'Telangana', pincode: '', degree_certificate_url: ''

@@ -1,11 +1,10 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
+require('dotenv').config();
+
 const pool = new Pool({
-    user: 'postgres',
-    host: 'localhost',
-    database: 'mlc_voter_db',
-    password: 'sath',
-    port: 5432,
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
 });
 
 async function fixPassword() {

@@ -9,6 +9,8 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
 
   useEffect(() => {
     fetchHistory();
+    const interval = setInterval(fetchHistory, 10000);
+    return () => clearInterval(interval);
   }, [search]);
 
   const fetchHistory = async () => {
@@ -43,7 +45,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
     return <div className="p-8 text-center text-gray-500">Loading history...</div>;
   }
 
-  const visibleHistory = history.filter(voter => !statusOnly || voter.enrollment_status === 'in_progress');
+  const visibleHistory = history.filter(voter => !statusOnly || ['pending', 'in_progress'].includes(voter.enrollment_status));
   const emptyMessage = statusOnly ? 'No pending requests' : search ? 'No enrollment found for this Voter ID' : 'No enrollments submitted yet.';
 
   return (
@@ -75,7 +77,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
                 }`}>
                   {voter.enrollment_status}
                 </span>
-                {statusOnly && <select value={voter.enrollment_status} onChange={e => updateStatus(voter.id, e.target.value)} className="mt-2 rounded border border-[#b5c9c1] bg-white px-1 py-1 text-[10px] text-[#173b35]"><option value="in_progress">In progress</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>}
+                {statusOnly && <select value={voter.enrollment_status} onChange={e => updateStatus(voter.id, e.target.value)} className="mt-2 rounded border border-[#b5c9c1] bg-white px-1 py-1 text-[10px] text-[#173b35]"><option value="pending">Pending</option><option value="in_progress">In progress</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>}
               </div>
             </div>
           ))}

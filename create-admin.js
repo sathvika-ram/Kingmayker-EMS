@@ -3,16 +3,13 @@ const bcrypt = require('bcrypt');
 require('dotenv').config();
 
 const pool = new Pool({
-    user: 'postgres',
-    host: 'localhost',
-    database: 'mlc_voter_db',
-    password: 'sath', // user's pgAdmin password as seen in index.js
-    port: 5432,
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
 });
 
 async function createSuperAdmin() {
-    const email = 'admin@example.com';
-    const plainPassword = 'password123';
+    const email = 'admin@kingmayker.com';
+    const plainPassword = 'Meta_family';
     
     try {
         console.log('Connecting to database...');
@@ -34,7 +31,7 @@ async function createSuperAdmin() {
             const passwordHash = await bcrypt.hash(plainPassword, salt);
 
             await pool.query(
-                `INSERT INTO users (name, email, password_hash, role, assigned_constituency) 
+                `INSERT INTO users (name, email, password_hash, role, assigned_constituency)
                  VALUES ($1, $2, $3, 'super_admin', 'All')`,
                 ['Super Admin', email, passwordHash]
             );
