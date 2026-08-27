@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { X } from 'lucide-react';
+import { API } from '../utils/api';
 
 export default function CoordinatorModal({ onClose }) {
   const [formData, setFormData] = useState({
@@ -16,7 +17,7 @@ export default function CoordinatorModal({ onClose }) {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    axios.get('http://localhost:5000/api/geo/assemblies')
+    axios.get(`${API}/geo/assemblies`)
       .then(response => setConstituencies(response.data || []))
       .catch(() => setError('Failed to load constituencies.'));
   }, []);
@@ -32,7 +33,7 @@ export default function CoordinatorModal({ onClose }) {
     setLoading(true);
 
     try {
-      await axios.post('http://localhost:5000/api/admin/create-coordinator', formData);
+      await axios.post(`${API}/admin/create-coordinator`, formData);
       setSuccess('Coordinator account created successfully!');
       setFormData({ name: '', email: '', mobile_number: '', temp_password: '', assigned_constituency: '' });
     } catch (err) {

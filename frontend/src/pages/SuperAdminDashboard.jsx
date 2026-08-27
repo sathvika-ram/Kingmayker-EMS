@@ -5,8 +5,8 @@ import { Activity, CheckCircle, Clock3, Download, FilePlus2, Filter, LayoutDashb
 import { useAuth } from '../context/AuthContext';
 import CoordinatorModal from '../components/CoordinatorModal';
 import VotersTable from '../components/VotersTable';
+import { API } from '../utils/api';
 
-const API = 'http://localhost:5000/api';
 const selectClass = 'rounded-md border border-[#b5c9c1] bg-white px-3 py-2 text-sm text-[#173b35]';
 
 export default function SuperAdminDashboard() {

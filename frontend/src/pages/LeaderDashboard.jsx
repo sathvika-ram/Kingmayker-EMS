@@ -3,8 +3,8 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { BarChart3, CheckCircle, Clock3, Download, FileSpreadsheet, LayoutDashboard, LogOut, Map, Menu, RefreshCw, Search, Target, Users, X } from 'lucide-react';
+import { API } from '../utils/api';
 
-const API = 'http://localhost:5000/api';
 const TARGET = 50000;
 const selectClass = 'rounded-md border border-[#b5c9c1] bg-white px-3 py-2 text-sm text-[#173b35] focus:border-[#1d6b5d]';
 

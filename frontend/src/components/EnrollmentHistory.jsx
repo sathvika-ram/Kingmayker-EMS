@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Clock, CheckCircle, XCircle, UserRound } from 'lucide-react';
+import { API } from '../utils/api';
 
 export default function EnrollmentHistory({ search = '', statusOnly = false }) {
   const [history, setHistory] = useState([]);
@@ -15,7 +16,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
 
   const fetchHistory = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/coordinator/history', { params: { search } });
+      const res = await axios.get(`${API}/coordinator/history`, { params: { search } });
       setHistory(res.data.voters || []);
     } catch (err) {
       setError('Failed to load history');
@@ -26,7 +27,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
 
   const updateStatus = async (id, status) => {
     try {
-      await axios.patch(`http://localhost:5000/api/coordinator/voters/${id}/status`, { status });
+      await axios.patch(`${API}/coordinator/voters/${id}/status`, { status });
       setHistory(current => current.map(voter => voter.id === id ? { ...voter, enrollment_status: status } : voter));
     } catch (err) {
       setError('Failed to update enrollment status');

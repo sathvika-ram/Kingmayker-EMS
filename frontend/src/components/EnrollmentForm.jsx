@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircle, UploadCloud } from 'lucide-react';
+import { API } from '../utils/api';
 
 const inputClass = 'w-full rounded-md border border-[#9bb4ad] bg-white px-3 py-2.5 text-sm text-[#173b35] placeholder:text-[#a4bbb4] focus:border-[#1d6b5d]';
 const labelClass = 'mb-1 block text-xs font-semibold text-[#52736a]';
@@ -27,7 +28,7 @@ export default function EnrollmentForm() {
   const [mandals, setMandals] = useState([]);
 
   useEffect(() => {
-    axios.get('http://localhost:5000/api/geo/regions')
+    axios.get(`${API}/geo/regions`)
       .then(response => setRegions(response.data || []))
       .catch(() => setError('Failed to load regions.'));
   }, []);
@@ -37,7 +38,7 @@ export default function EnrollmentForm() {
     setMandals([]);
     setFormData(current => ({ ...current, constituency: '', mandal: '' }));
     if (!formData.region) return;
-    axios.get('http://localhost:5000/api/geo/assemblies', { params: { region: formData.region } })
+    axios.get(`${API}/geo/assemblies`, { params: { region: formData.region } })
       .then(response => setAssemblies(response.data || []))
       .catch(() => setError('Failed to load assembly constituencies.'));
   }, [formData.region]);
@@ -46,7 +47,7 @@ export default function EnrollmentForm() {
     setMandals([]);
     setFormData(current => ({ ...current, mandal: '' }));
     if (!formData.constituency) return;
-    axios.get('http://localhost:5000/api/geo/mandals', { params: { constituency: formData.constituency } })
+    axios.get(`${API}/geo/mandals`, { params: { constituency: formData.constituency } })
       .then(response => setMandals(response.data || []))
       .catch(() => setError('Failed to load mandals.'));
   }, [formData.constituency]);
@@ -82,7 +83,7 @@ export default function EnrollmentForm() {
 
     setLoading(true);
     try {
-      const response = await axios.post('http://localhost:5000/api/voters/enroll', { ...formData, coordinator_id: user.id });
+      const response = await axios.post(`${API}/voters/enroll`, { ...formData, coordinator_id: user.id });
       setSubmittedId(response.data.voter?.id);
       setSuccess(true);
       setFormData(initialFormState);
