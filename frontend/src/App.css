@@ -153,6 +153,15 @@
   }
 }
 
+button.border-teal-700 {
+  background-color: #0f766e;
+  color: white;
+}
+
+button.border-teal-700:hover {
+  background-color: #115e59;
+}
+
 #spacer {
   height: 88px;
   border-top: 1px solid var(--border);

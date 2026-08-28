@@ -15,7 +15,7 @@ const getInitialFormState = (user) => ({
   complete_address: '', district: '', state: 'Telangana', pincode: '', degree_certificate_url: ''
 });
 
-export default function EnrollmentForm() {
+export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   const { user } = useAuth();
   const initialFormState = getInitialFormState(user);
   const [formData, setFormData] = useState(() => {
@@ -106,13 +106,14 @@ export default function EnrollmentForm() {
 
     setLoading(true);
     try {
-      const response = await axios.post(`${API}/voters/enroll`, { ...formData, coordinator_id: user.id });
+      const response = await axios.post(`${API}/voters/enroll`, { ...formData, coordinator_id: coordinatorId || user.id });
       setSubmittedId(response.data.voter?.id);
       setSuccess(true);
       setFormData(initialFormState);
       localStorage.removeItem(`enrollment-draft-${user.id}`);
       setFieldErrors({});
       setFile(null);
+      onSubmitted?.();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to submit enrollment');
     } finally {

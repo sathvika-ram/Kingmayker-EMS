@@ -132,7 +132,7 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
     }
 });
 
-app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coordinator'), async (req, res) => {
+app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), async (req, res) => {
     // Handling both sets of fields from the modified form
     const {
         voter_id, voter_name, father_name, date_of_birth, mobile_number, email, gender, nationality, application_type, university, college, course,
@@ -140,8 +140,12 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         constituency, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, notes
     } = req.body;
     try {
-        if (constituency !== req.user.constituency || (req.user.region && region !== req.user.region) || (req.user.mandal && mandal !== req.user.mandal)) {
+        if (req.user.role === 'constituency_coordinator' && (constituency !== req.user.constituency || (req.user.region && region !== req.user.region) || (req.user.mandal && mandal !== req.user.mandal))) {
             return res.status(403).json({ error: 'You can enroll voters only in your assigned geography' });
+        }
+        if (req.user.role === 'super_admin') {
+            const coordinator = await pool.query('SELECT id FROM users WHERE id = $1 AND role = \'constituency_coordinator\'', [req.body.coordinator_id]);
+            if (!coordinator.rowCount) return res.status(400).json({ error: 'Select a valid coordinator for this enrollment.' });
         }
         if (!voter_id || !voter_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !email || !university || !college || !course || !degree_qualification || !graduation_year || !complete_address || !village || !district || !pincode) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
@@ -161,7 +165,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
                 $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
             RETURNING *`,
             [
-                req.user.id, voter_name, father_name, date_of_birth,
+                req.body.coordinator_id || req.user.id, voter_name, father_name, date_of_birth,
                 mobile_number, true, constituency, mandal,
                 village, degree_qualification || course, graduation_year, degree_certificate_url,
                 voter_id, gender, voterEmail, nationality, application_type, university, college, course,
