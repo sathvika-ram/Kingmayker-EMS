@@ -6,12 +6,14 @@ import { API } from '../utils/api';
 export default function CoordinatorModal({ onClose }) {
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
     mobile_number: '',
     temp_password: '',
-    assigned_constituency: ''
+    assigned_region: '',
+    assigned_constituency: '',
+    assigned_mandal: ''
   });
   const [constituencies, setConstituencies] = useState([]);
+  const [mandals, setMandals] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -23,7 +25,15 @@ export default function CoordinatorModal({ onClose }) {
   }, []);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const next = { ...formData, [e.target.name]: e.target.value };
+    if (e.target.name === 'assigned_constituency') {
+      const selected = constituencies.find(item => item.assembly_constituency === e.target.value);
+      next.assigned_region = selected?.region || '';
+      next.assigned_mandal = '';
+      setMandals([]);
+      if (e.target.value) axios.get(`${API}/geo/mandals`, { params: { constituency: e.target.value } }).then(response => setMandals(response.data || [])).catch(() => setError('Failed to load mandals.'));
+    }
+    setFormData(next);
   };
 
   const handleSubmit = async (e) => {
@@ -33,9 +43,9 @@ export default function CoordinatorModal({ onClose }) {
     setLoading(true);
 
     try {
-      await axios.post(`${API}/admin/create-coordinator`, formData);
-      setSuccess('Coordinator account created successfully!');
-      setFormData({ name: '', email: '', mobile_number: '', temp_password: '', assigned_constituency: '' });
+      const response = await axios.post(`${API}/admin/create-coordinator`, formData);
+      setSuccess(response.data.message);
+      setFormData({ name: '', mobile_number: '', temp_password: '', assigned_region: '', assigned_constituency: '', assigned_mandal: '' });
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create account');
     } finally {
@@ -64,8 +74,14 @@ export default function CoordinatorModal({ onClose }) {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="font-normal text-gray-400">(optional)</span></label>
-              <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500" placeholder="ramesh@mlc-campaign.org" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Personal email</label>
+              <input type="text" readOnly value={getLoginEmail(formData.name, formData.assigned_constituency)} className="w-full px-3 py-2 border rounded-md text-sm bg-gray-50 text-gray-500" placeholder="Generated from name and assigned area" />
+              <p className="mt-1 text-xs text-gray-500">This is the coordinator's login email and is generated automatically.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned region</label>
+              <input readOnly value={formData.assigned_region} className="w-full px-3 py-2 border rounded-md text-sm bg-gray-50 text-gray-500" placeholder="Selected from constituency" />
             </div>
 
             <div>
@@ -82,7 +98,15 @@ export default function CoordinatorModal({ onClose }) {
               <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Constituency</label>
               <select name="assigned_constituency" required value={formData.assigned_constituency} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500">
                 <option value="">Select constituency</option>
-                {constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}
+                {constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency} ({item.region})</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Mandal</label>
+              <select name="assigned_mandal" required value={formData.assigned_mandal} onChange={handleChange} disabled={!formData.assigned_constituency} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500">
+                <option value="">Select mandal</option>
+                {mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}
               </select>
             </div>
 
@@ -100,4 +124,10 @@ export default function CoordinatorModal({ onClose }) {
       </div>
     </div>
   );
+}
+
+function getLoginEmail(name, constituency) {
+  const firstName = String(name || '').trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+  const area = String(constituency || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return firstName && area ? `${firstName}.${area}@kingmayker.com` : '';
 }

@@ -35,7 +35,8 @@ export default function CoordinatorDashboard() {
 
       {/* Main Content */}
       <main className="coordinator-main flex-1 w-full bg-white shadow-sm flex flex-col relative pb-20">
-        {activeTab === 'enroll' ? <EnrollmentForm /> : <EnrollmentHistory search={search} statusOnly={activeTab === 'status'} />}
+        <div className={activeTab === 'enroll' ? '' : 'hidden'}><EnrollmentForm /></div>
+        <div className={activeTab === 'enroll' ? 'hidden' : ''}><EnrollmentHistory search={search} statusOnly={activeTab === 'status'} /></div>
       </main>
 
       {/* Bottom Navigation for Mobile */}

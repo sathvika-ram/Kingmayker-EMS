@@ -6,18 +6,22 @@ import { API } from '../utils/api';
 
 const inputClass = 'w-full rounded-md border border-[#9bb4ad] bg-white px-3 py-2.5 text-sm text-[#173b35] placeholder:text-[#a4bbb4] focus:border-[#1d6b5d]';
 const labelClass = 'mb-1 block text-xs font-semibold text-[#52736a]';
+const getInitialFormState = (user) => ({
+  voter_name: '', father_name: '', date_of_birth: '', mobile_number: '', email: '', gender: '', voter_id: '',
+  citizenship_status: true, nationality: 'Indian', application_type: 'new',
+  region: user?.assigned_region || '', constituency: user?.assigned_constituency || '', mandal: '', village: '',
+  degree_qualification: '', university: '', college: '', course: '', graduation_year: '',
+  form18_number: '', acknowledgement_number: '', reference_number: '', notes: '',
+  complete_address: '', district: '', state: 'Telangana', pincode: '', degree_certificate_url: ''
+});
 
 export default function EnrollmentForm() {
   const { user } = useAuth();
-  const initialFormState = {
-    voter_name: '', father_name: '', date_of_birth: '', mobile_number: '', email: '', gender: '', voter_id: '',
-    citizenship_status: true, nationality: 'Indian', application_type: 'new',
-    region: '', constituency: user?.assigned_constituency || '', mandal: '', village: '',
-    degree_qualification: '', university: '', college: '', course: '', graduation_year: '',
-    form18_number: '', acknowledgement_number: '', reference_number: '', notes: '',
-    complete_address: '', district: '', state: 'Telangana', pincode: '', degree_certificate_url: ''
-  };
-  const [formData, setFormData] = useState(initialFormState);
+  const initialFormState = getInitialFormState(user);
+  const [formData, setFormData] = useState(() => {
+    try { return { ...initialFormState, ...JSON.parse(localStorage.getItem(`enrollment-draft-${user?.id}`) || '{}') }; }
+    catch { return initialFormState; }
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -26,6 +30,11 @@ export default function EnrollmentForm() {
   const [regions, setRegions] = useState([]);
   const [assemblies, setAssemblies] = useState([]);
   const [mandals, setMandals] = useState([]);
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  useEffect(() => {
+    if (user?.id) localStorage.setItem(`enrollment-draft-${user.id}`, JSON.stringify(formData));
+  }, [formData, user?.id]);
 
   useEffect(() => {
     axios.get(`${API}/geo/regions`)
@@ -36,12 +45,12 @@ export default function EnrollmentForm() {
   useEffect(() => {
     setAssemblies([]);
     setMandals([]);
-    setFormData(current => ({ ...current, constituency: '', mandal: '' }));
+    setFormData(current => ({ ...current, constituency: user?.assigned_constituency || '', mandal: '' }));
     if (!formData.region) return;
     axios.get(`${API}/geo/assemblies`, { params: { region: formData.region } })
       .then(response => setAssemblies(response.data || []))
       .catch(() => setError('Failed to load assembly constituencies.'));
-  }, [formData.region]);
+  }, [formData.region, user?.assigned_constituency]);
 
   useEffect(() => {
     setMandals([]);
@@ -60,6 +69,20 @@ export default function EnrollmentForm() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(current => ({ ...current, [name]: value }));
+    setFieldErrors(current => ({ ...current, [name]: validateField(name, value) }));
+  };
+
+  const handleBlur = (e) => setFieldErrors(current => ({ ...current, [e.target.name]: validateField(e.target.name, formData[e.target.name]) }));
+
+  const validateField = (name, value) => {
+    const required = ['voter_id', 'voter_name', 'date_of_birth', 'mobile_number', 'email', 'gender', 'university', 'college', 'course', 'degree_qualification', 'graduation_year', 'region', 'constituency', 'mandal', 'complete_address', 'village', 'district', 'pincode'];
+    if (required.includes(name) && !String(value || '').trim()) return 'This field is required.';
+    if (name === 'mobile_number' && value && !/^\d{10}$/.test(value)) return 'Mobile number must be exactly 10 digits.';
+    if (name === 'email' && value && !/^\S+@\S+\.\S+$/.test(value)) return 'Enter a valid personal email.';
+    if (name === 'graduation_year' && value && (Number(value) < 1900 || Number(value) > 2023)) return 'Graduation year must be between 1900 and 2023.';
+    if (name === 'pincode' && value && !/^\d{6}$/.test(value)) return 'Pincode must be exactly 6 digits.';
+    if (name === 'date_of_birth' && value && calculateAge(value) < 18) return 'Voter must be at least 18 years old.';
+    return '';
   };
 
   const handleFileChange = (e) => {
@@ -73,9 +96,9 @@ export default function EnrollmentForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (calculateAge(formData.date_of_birth) < 18) return setError('Voter must be at least 18 years old.');
-    if (!formData.voter_id) return setError('Voter ID is required.');
-    if (!formData.mobile_number) return setError('Mobile number is required.');
+    const nextErrors = Object.keys(formData).reduce((errors, name) => ({ ...errors, [name]: validateField(name, formData[name]) }), {});
+    setFieldErrors(nextErrors);
+    if (Object.values(nextErrors).some(Boolean)) return setError('Please correct the highlighted fields.');
     if (!formData.acknowledgement_number) return setError('Acknowledgement number is required.');
     if (Number(formData.graduation_year) > 2023) return setError('Year of graduation must be 2023 or earlier.');
     if (!formData.degree_certificate_url) return setError('Please upload the degree certificate.');
@@ -87,6 +110,8 @@ export default function EnrollmentForm() {
       setSubmittedId(response.data.voter?.id);
       setSuccess(true);
       setFormData(initialFormState);
+      localStorage.removeItem(`enrollment-draft-${user.id}`);
+      setFieldErrors({});
       setFile(null);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to submit enrollment');
@@ -115,27 +140,27 @@ export default function EnrollmentForm() {
 
       <form onSubmit={handleSubmit} className="space-y-4 pb-8">
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Personal details</h3>
-          <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>Voter ID *</label><input name="voter_id" required value={formData.voter_id} onChange={handleChange} className={inputClass} placeholder="Enter voter ID" /></div><div><label className={labelClass}>Gender</label><select name="gender" value={formData.gender} onChange={handleChange} className={inputClass}><option value="">Select gender</option><option>Female</option><option>Male</option><option>Other</option></select></div></div>
+          <div className="grid gap-3 sm:grid-cols-2"><Field label="Voter ID *" name="voter_id" value={formData.voter_id} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.voter_id} placeholder="Enter voter ID" /><Field label="Gender *" name="gender" value={formData.gender} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.gender} as="select"><option value="">Select gender</option><option>Female</option><option>Male</option><option>Other</option></Field></div>
           <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>Full name *</label><input name="voter_name" required value={formData.voter_name} onChange={handleChange} className={inputClass} placeholder="Enter full name" /></div><div><label className={labelClass}>Father's name/Husband's name</label><input name="father_name" value={formData.father_name} onChange={handleChange} className={inputClass} placeholder="Enter father's name" /></div></div>
-          <div className="grid gap-3 sm:grid-cols-3"><div><label className={labelClass}>Date of birth *</label><input type="date" name="date_of_birth" required value={formData.date_of_birth} onChange={handleChange} className={inputClass} /></div><div><label className={labelClass}>Age</label><input disabled value={calculateAge(formData.date_of_birth)} className={`${inputClass} bg-[#edf3f0]`} placeholder="Auto-calculated" /></div><div><label className={labelClass}>Mobile number *</label><input type="tel" name="mobile_number" required pattern="[0-9]{10}" value={formData.mobile_number} onChange={handleChange} className={inputClass} placeholder="10-digit number" /></div></div>
-          <div><label className={labelClass}>Email address <span className="font-normal text-[#849890]">(optional)</span></label><input type="email" name="email" value={formData.email} onChange={handleChange} className={inputClass} placeholder="name@example.com" /></div>
+          <div className="grid gap-3 sm:grid-cols-3"><div><label className={labelClass}>Date of birth *</label><input type="date" name="date_of_birth" required value={formData.date_of_birth} onChange={handleChange} onBlur={handleBlur} className={`${inputClass} ${fieldErrors.date_of_birth ? 'border-[#c45d52] bg-[#fff8f7]' : ''}`} />{fieldErrors.date_of_birth && <p className="mt-1 text-xs font-medium text-[#b44d45]" role="alert">{fieldErrors.date_of_birth}</p>}</div><div><label className={labelClass}>Age</label><input disabled value={calculateAge(formData.date_of_birth)} className={`${inputClass} bg-[#edf3f0]`} placeholder="Auto-calculated" /></div><Field label="Mobile number *" name="mobile_number" type="tel" value={formData.mobile_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.mobile_number} placeholder="10-digit number" /></div>
+          <Field label="Personal email *" name="email" type="email" value={formData.email} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.email} placeholder="name@example.com" />
           <div><label className={labelClass}>Nationality *</label><input value="Indian" readOnly className={`${inputClass} bg-[#edf3f0]`} /><input type="hidden" name="nationality" value="Indian" /></div>
         </section>
 
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Application and education</h3>
           <div><label className={labelClass}>Application type *</label><div className="flex gap-5 pt-1"><label className="flex items-center gap-2 text-sm text-[#465b55]"><input type="radio" name="application_type" value="new" checked={formData.application_type === 'new'} onChange={handleChange} /> New</label><label className="flex items-center gap-2 text-sm text-[#465b55]"><input type="radio" name="application_type" value="renewal" checked={formData.application_type === 'renewal'} onChange={handleChange} /> Renewal</label></div></div>
-          <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>University</label><input name="university" value={formData.university} onChange={handleChange} className={inputClass} placeholder="Enter university" /></div><div><label className={labelClass}>College</label><input name="college" value={formData.college} onChange={handleChange} className={inputClass} placeholder="Enter college" /></div></div>
-          <div><label className={labelClass}>Course</label><input name="course" value={formData.course} onChange={handleChange} className={inputClass} placeholder="Enter course" /></div>
-          <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>Degree qualification</label><input name="degree_qualification" value={formData.degree_qualification} onChange={handleChange} className={inputClass} placeholder="e.g. B.Tech" /></div><div><label className={labelClass}>Year of graduation * <span className="font-normal text-[#849890]">(2023 or earlier)</span></label><input type="number" name="graduation_year" required min="1900" max="2023" value={formData.graduation_year} onChange={handleChange} className={inputClass} placeholder="YYYY" /></div></div>
+          <div className="grid gap-3 sm:grid-cols-2"><Field label="University *" name="university" value={formData.university} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.university} placeholder="Enter university" /><Field label="College *" name="college" value={formData.college} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.college} placeholder="Enter college" /></div>
+          <Field label="Course *" name="course" value={formData.course} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.course} placeholder="Enter course" />
+          <div className="grid gap-3 sm:grid-cols-2"><Field label="Degree qualification *" name="degree_qualification" value={formData.degree_qualification} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.degree_qualification} placeholder="e.g. B.Tech" /><Field label="Year of graduation * (2023 or earlier)" name="graduation_year" type="number" value={formData.graduation_year} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.graduation_year} placeholder="YYYY" /></div>
           <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>Acknowledgement number *</label><input name="acknowledgement_number" required value={formData.acknowledgement_number} onChange={handleChange} className={inputClass} /></div><div><label className={labelClass}>Notes <span className="font-normal text-[#849890]">(optional)</span></label><input name="notes" value={formData.notes} onChange={handleChange} className={inputClass} placeholder="Add a note if needed" /></div></div>
         </section>
 
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Address and constituency</h3>
-          <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>Region *</label><select name="region" required value={formData.region} onChange={handleChange} className={inputClass}><option value="">Select region</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</select></div><div><label className={labelClass}>Assembly constituency *</label><select name="constituency" required value={formData.constituency} onChange={handleChange} disabled={!formData.region} className={inputClass}><option value="">Select constituency</option>{assemblies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select></div></div>
+          <div className="grid gap-3 sm:grid-cols-2"><Field label="Region *" name="region" value={formData.region} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.region} as="select" disabled={Boolean(user?.assigned_region)}><option value="">Select region</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</Field><Field label="Assembly constituency *" name="constituency" value={formData.constituency} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.constituency} as="select" disabled={Boolean(user?.assigned_constituency)}><option value="">Select constituency</option>{assemblies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</Field></div>
           <div><label className={labelClass}>Mandal *</label><select name="mandal" required value={formData.mandal} onChange={handleChange} disabled={!formData.constituency} className={inputClass}><option value="">Select mandal</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</select></div>
-          <div><label className={labelClass}>Complete address *</label><input name="complete_address" required value={formData.complete_address} onChange={handleChange} className={inputClass} placeholder="House number, street and locality" /></div>
-          <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>Village / city *</label><input name="village" required value={formData.village} onChange={handleChange} className={inputClass} /></div><div><label className={labelClass}>District *</label><input name="district" required value={formData.district} onChange={handleChange} className={inputClass} /></div></div>
-          <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>State *</label><input name="state" required value={formData.state} onChange={handleChange} className={inputClass} /></div><div><label className={labelClass}>Pincode *</label><input name="pincode" required inputMode="numeric" pattern="[0-9]{6}" value={formData.pincode} onChange={handleChange} className={inputClass} placeholder="6-digit pincode" /></div></div>
+          <Field label="Complete address *" name="complete_address" value={formData.complete_address} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.complete_address} placeholder="H.No, STREET, city, district" />
+          <div className="grid gap-3 sm:grid-cols-2"><Field label="Village / Ward *" name="village" value={formData.village} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.village} placeholder="Enter village or ward" /><Field label="District *" name="district" value={formData.district} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.district} placeholder="Enter district" /></div>
+          <div className="grid gap-3 sm:grid-cols-2"><Field label="State *" name="state" value={formData.state} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.state} readOnly /><Field label="Pincode *" name="pincode" value={formData.pincode} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.pincode} placeholder="6-digit pincode" /></div>
         </section>
 
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Supporting document</h3><label className={labelClass}>Degree certificate *</label><div className="relative rounded-md border-2 border-dashed border-[#b6cbc3] bg-white p-5 text-center hover:bg-[#f2f8f4]"><input type="file" onChange={handleFileChange} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" accept=".pdf,.jpg,.jpeg,.png" /><UploadCloud className="mx-auto mb-2 text-[#1d6b5d]" size={24} /><span className="text-sm font-medium text-[#465b55]">{file ? file.name : 'Tap to upload document'}</span><p className="mt-1 text-xs text-[#849890]">PDF, JPG or PNG up to 5MB</p></div></section>
@@ -143,4 +168,13 @@ export default function EnrollmentForm() {
       </form>
     </div>
   );
+}
+
+function Field({ label, name, value, onChange, onBlur, error, as = 'input', children, ...props }) {
+  const Control = as;
+  return <div>
+    <label className={labelClass}>{label}</label>
+    <Control name={name} value={value} onChange={onChange} onBlur={onBlur} className={`${inputClass} ${error ? 'border-[#c45d52] bg-[#fff8f7]' : ''}`} {...props}>{children}</Control>
+    {error && <p className="mt-1 text-xs font-medium text-[#b44d45]" role="alert">{error}</p>}
+  </div>;
 }

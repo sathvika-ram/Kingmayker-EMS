@@ -13,7 +13,11 @@ app.use(cors());
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
+    max: 10,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
 });
+pool.on('error', error => console.error('PostgreSQL pool error:', error.message));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'YOUR_SECRET_JWT_KEY';
 
@@ -24,7 +28,19 @@ async function ensureVoterColumns() {
         ADD COLUMN IF NOT EXISTS complete_address TEXT
     `);
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_mandal VARCHAR(120)');
         await pool.query('ALTER TABLE users ALTER COLUMN email DROP NOT NULL');
+}
+
+function normalizeEmailPart(value) {
+    return String(value || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '');
+}
+
+function buildCoordinatorEmail(name, constituency) {
+    const firstName = normalizeEmailPart(String(name || '').trim().split(/\s+/)[0]);
+    const area = normalizeEmailPart(constituency);
+    return `${firstName}.${area}@kingmayker.com`;
 }
 
     function writeAudit(userId, action, details = {}) {
@@ -69,14 +85,19 @@ app.post('/api/auth/login', async (req, res) => {
         const user = userResult.rows[0];
         const validPassword = await bcrypt.compare(password, user.password_hash);
         if (!validPassword) return res.status(401).json({ error: 'Invalid email or password' });
+        let assignedRegion = user.assigned_region;
+        if (!assignedRegion && user.assigned_constituency) {
+            const geography = await pool.query('SELECT "Old District" FROM master_geography WHERE "Assembly Constituency" = $1 LIMIT 1', [user.assigned_constituency]);
+            assignedRegion = geography.rows[0]?.['Old District'] || null;
+        }
 
         const token = jwt.sign(
-            { id: user.id, email: user.email, role: user.role, constituency: user.assigned_constituency },
+            { id: user.id, email: user.email, role: user.role, region: assignedRegion, constituency: user.assigned_constituency, mandal: user.assigned_mandal },
             JWT_SECRET,
             { expiresIn: '12h' }
         );
 
-            res.json({ message: 'Login successful', token, role: user.role, name: user.name, assigned_constituency: user.assigned_constituency });
+            res.json({ message: 'Login successful', token, role: user.role, name: user.name, assigned_region: assignedRegion, assigned_constituency: user.assigned_constituency, assigned_mandal: user.assigned_mandal });
             writeAudit(user.id, 'user_login', { role: user.role });
     } catch (err) {
         res.status(500).json({ error: 'Server error during login' });
@@ -84,22 +105,29 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super_admin'), async (req, res) => {
-    const { name, email, mobile_number, temp_password, assigned_constituency } = req.body;
+    const { name, mobile_number, temp_password, assigned_region, assigned_constituency, assigned_mandal } = req.body;
     try {
         const normalizedName = String(name || '').trim();
-        const generatedEmail = normalizedName.toLowerCase().replace(/[^a-z0-9]+/g, '.')
-            .replace(/^\.|\.$/g, '') + '@kingmayker.com';
-        const coordinatorEmail = String(email || generatedEmail).trim().toLowerCase();
+        if (!normalizedName || !/^\d{10}$/.test(String(mobile_number || '')) || !temp_password || !assigned_region || !assigned_constituency || !assigned_mandal) {
+            return res.status(400).json({ error: 'Name, 10-digit mobile, password, region, constituency, and mandal are required.' });
+        }
+        const geography = await pool.query(
+            'SELECT 1 FROM master_geography WHERE "Old District" = $1 AND "Assembly Constituency" = $2 AND "Mandal" = $3 LIMIT 1',
+            [assigned_region, assigned_constituency, assigned_mandal]
+        );
+        if (!geography.rowCount) return res.status(400).json({ error: 'The selected region, constituency, and mandal do not match.' });
+        const coordinatorEmail = buildCoordinatorEmail(normalizedName, assigned_constituency);
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(temp_password, salt);
             const newCoordinator = await pool.query(
-                `INSERT INTO users (name, email, mobile_number, password_hash, role, assigned_constituency) 
-                 VALUES ($1, NULLIF($2, ''), $3, $4, 'constituency_coordinator', $5) RETURNING id, name, email, mobile_number, assigned_constituency`,
-                [normalizedName, coordinatorEmail, mobile_number, passwordHash, assigned_constituency]
+                `INSERT INTO users (name, email, mobile_number, password_hash, role, assigned_region, assigned_constituency, assigned_mandal) 
+                 VALUES ($1, $2, $3, $4, 'constituency_coordinator', $5, $6, $7) RETURNING id, name, email, mobile_number, assigned_region, assigned_constituency, assigned_mandal`,
+                [normalizedName, coordinatorEmail, mobile_number, passwordHash, assigned_region, assigned_constituency, assigned_mandal]
         );
-            writeAudit(req.user?.id, 'coordinator_created', { coordinator_id: newCoordinator.rows[0].id, assigned_constituency });
-        res.status(201).json({ message: 'Created successfully', coordinator: newCoordinator.rows[0] });
+            writeAudit(req.user?.id, 'coordinator_created', { coordinator_id: newCoordinator.rows[0].id, assigned_constituency, assigned_mandal });
+        res.status(201).json({ message: `Coordinator created. Login email: ${coordinatorEmail}`, coordinator: newCoordinator.rows[0] });
     } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'A coordinator already uses this generated login email.' });
         res.status(500).json({ error: 'Failed to create coordinator' });
     }
 });
@@ -112,9 +140,14 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         constituency, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, notes
     } = req.body;
     try {
-        if (constituency !== req.user.constituency) {
-            return res.status(403).json({ error: 'You can enroll voters only in your assigned constituency' });
+        if (constituency !== req.user.constituency || (req.user.region && region !== req.user.region) || (req.user.mandal && mandal !== req.user.mandal)) {
+            return res.status(403).json({ error: 'You can enroll voters only in your assigned geography' });
         }
+        if (!voter_id || !voter_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !email || !university || !college || !course || !degree_qualification || !graduation_year || !complete_address || !village || !district || !pincode) {
+            return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) return res.status(400).json({ error: 'Enter a valid personal email address.' });
+        if (!/^\d{6}$/.test(String(pincode)) || Number(graduation_year) > 2023) return res.status(400).json({ error: 'Check the pincode and graduation year.' });
         const voterEmail = String(email || `${String(voter_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@kingmayker.com`).trim();
         const newVoter = await pool.query(
             `INSERT INTO voters (
@@ -162,11 +195,59 @@ app.get('/api/admin/voters', authenticateToken, requireRoles('super_admin', 'par
     }
 });
 
+app.get('/api/admin/overview', authenticateToken, requireRoles('super_admin'), async (req, res) => {
+    try {
+        const [totals, regions, coordinators] = await Promise.all([
+            pool.query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE enrollment_status IN ('pending', 'in_progress'))::int AS pending, COUNT(*) FILTER (WHERE enrollment_status = 'approved')::int AS approved, COUNT(*) FILTER (WHERE enrollment_status = 'rejected')::int AS rejected FROM voters`),
+            pool.query(`SELECT region, COUNT(*)::int AS count FROM voters WHERE region IN ('Nalgonda', 'Warangal', 'Khammam') GROUP BY region ORDER BY CASE region WHEN 'Nalgonda' THEN 1 WHEN 'Warangal' THEN 2 WHEN 'Khammam' THEN 3 END`),
+            pool.query(`SELECT COUNT(*)::int AS total FROM users WHERE role = 'constituency_coordinator'`)
+        ]);
+        res.json({ metrics: { ...totals.rows[0], active_coordinators: coordinators.rows[0].total }, regional_breakdown: regions.rows });
+    } catch (err) { res.status(500).json({ error: 'Unable to load admin overview.' }); }
+});
+
+app.get('/api/admin/enrollments', authenticateToken, requireRoles('super_admin'), async (req, res) => {
+    const { region, constituency, mandal, status, search } = req.query;
+    try {
+        let query = 'SELECT v.*, u.name AS coordinator_name FROM voters v LEFT JOIN users u ON v.coordinator_id = u.id WHERE 1=1';
+        const params = [];
+        const add = (condition, value) => { if (value) { params.push(value); query += ` AND ${condition} = $${params.length}`; } };
+        add('v.region', region); add('v.constituency', constituency); add('v.mandal', mandal); add('v.enrollment_status', status);
+        if (search) { params.push(`%${search}%`); query += ` AND (v.voter_name ILIKE $${params.length} OR v.voter_id ILIKE $${params.length} OR v.mobile_number ILIKE $${params.length})`; }
+        query += ' ORDER BY v.created_at DESC LIMIT 1000';
+        const result = await pool.query(query, params);
+        res.json({ voters: result.rows, total_count: result.rowCount });
+    } catch (err) { res.status(500).json({ error: 'Unable to load enrollment feed.' }); }
+});
+
+app.get('/api/admin/coordinators', authenticateToken, requireRoles('super_admin'), async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT id, name, email, mobile_number, assigned_region, assigned_constituency, assigned_mandal, created_at FROM users WHERE role = 'constituency_coordinator' ORDER BY name`);
+        res.json({ coordinators: result.rows });
+    } catch (err) { res.status(500).json({ error: 'Unable to load coordinators.' }); }
+});
+
+app.get('/api/admin/geography', authenticateToken, requireRoles('super_admin'), async (req, res) => {
+    const { region, constituency, mandal, search } = req.query;
+    try {
+        let query = `SELECT "Old District" AS region, "AC No" AS ac_no, "Assembly Constituency" AS assembly_constituency, "Mandal" AS mandal, "Village" AS village, "Village LGD Code" AS village_lgd_code, "Gram Panchayat" AS gram_panchayat, "Gram Panchayat LGD Code" AS gram_panchayat_lgd_code, "Pincode" AS pincode FROM master_geography WHERE 1=1`;
+        const params = [];
+        const add = (condition, value) => { if (value) { params.push(value); query += ` AND ${condition} = $${params.length}`; } };
+        add('"Old District"', region); add('"Assembly Constituency"', constituency); add('"Mandal"', mandal);
+        if (search) { params.push(`%${search}%`); query += ` AND ("Village" ILIKE $${params.length} OR "Mandal" ILIKE $${params.length} OR "Assembly Constituency" ILIKE $${params.length})`; }
+        query += ' ORDER BY "Old District", "Assembly Constituency", "Mandal", "Village" LIMIT 10000';
+        const result = await pool.query(query, params);
+        res.json({ geography: result.rows, total_count: result.rowCount });
+    } catch (err) { res.status(500).json({ error: 'Unable to load geography explorer.' }); }
+});
+
 app.patch('/api/admin/voters/:id/status', authenticateToken, requireRoles('super_admin'), async (req, res) => {
     const { id } = req.params;
     const { enrollment_status } = req.body;
     try {
-        const updatedVoter = await pool.query(`UPDATE voters SET enrollment_status = $1 WHERE id = $2 RETURNING *`, [enrollment_status, id]);
+        if (!['pending', 'in_progress', 'approved', 'rejected'].includes(enrollment_status)) return res.status(400).json({ error: 'Invalid enrollment status.' });
+        const updatedVoter = await pool.query(`UPDATE voters SET enrollment_status = $1 WHERE id = $2 AND enrollment_status IN ('pending', 'in_progress') RETURNING *`, [enrollment_status, id]);
+        if (!updatedVoter.rowCount) return res.status(409).json({ error: 'This enrollment status has already been finalized and cannot be changed.' });
         res.json({ message: 'Updated', voter: updatedVoter.rows[0] });
             writeAudit(req.user?.id, 'voter_status_updated', { voter_id: id, enrollment_status });
     } catch (err) {
@@ -177,7 +258,7 @@ app.patch('/api/admin/voters/:id/status', authenticateToken, requireRoles('super
 // NEW GEOGRAPHY ROUTES
 app.get('/api/geo/regions', async (req, res) => {
     try {
-        const result = await pool.query('SELECT DISTINCT old_district as region FROM master_geography WHERE old_district IS NOT NULL ORDER BY old_district');
+        const result = await pool.query('SELECT DISTINCT "Old District" as region FROM master_geography WHERE "Old District" IS NOT NULL ORDER BY "Old District"');
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
@@ -188,8 +269,8 @@ app.get('/api/geo/assemblies', async (req, res) => {
     try {
         const { region } = req.query;
         const result = region
-            ? await pool.query('SELECT DISTINCT ac_no, assembly_constituency FROM master_geography WHERE old_district = $1 ORDER BY assembly_constituency', [region])
-            : await pool.query('SELECT DISTINCT ac_no, assembly_constituency FROM master_geography ORDER BY assembly_constituency');
+            ? await pool.query('SELECT DISTINCT "Old District" as region, "AC No" as ac_no, "Assembly Constituency" as assembly_constituency FROM master_geography WHERE "Old District" = $1 ORDER BY "Assembly Constituency"', [region])
+            : await pool.query('SELECT DISTINCT "Old District" as region, "AC No" as ac_no, "Assembly Constituency" as assembly_constituency FROM master_geography ORDER BY "Assembly Constituency"');
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
@@ -199,7 +280,7 @@ app.get('/api/geo/assemblies', async (req, res) => {
 app.get('/api/geo/mandals', async (req, res) => {
     try {
         const { constituency } = req.query;
-        const result = await pool.query('SELECT DISTINCT mandal FROM master_geography WHERE assembly_constituency = $1 ORDER BY mandal', [constituency]);
+        const result = await pool.query('SELECT DISTINCT "Mandal" as mandal FROM master_geography WHERE "Assembly Constituency" = $1 ORDER BY "Mandal"', [constituency]);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
@@ -237,7 +318,9 @@ app.patch('/api/coordinator/voters/:id/status', authenticateToken, requireRoles(
     const { id } = req.params;
     const { status } = req.body;
     try {
-        const updatedVoter = await pool.query(`UPDATE voters SET enrollment_status = $1 WHERE id = $2 AND coordinator_id = $3 RETURNING *`, [status, id, req.user.id]);
+        if (!['in_progress', 'approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid enrollment status.' });
+        const updatedVoter = await pool.query(`UPDATE voters SET enrollment_status = $1 WHERE id = $2 AND coordinator_id = $3 AND enrollment_status = 'pending' RETURNING *`, [status, id, req.user.id]);
+        if (!updatedVoter.rowCount) return res.status(409).json({ error: 'This enrollment status has already been changed and cannot be corrected.' });
         res.json({ voter: updatedVoter.rows[0] });
     } catch (err) {
         res.status(500).json({ error: 'Server error' });

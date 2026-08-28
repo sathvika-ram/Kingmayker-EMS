@@ -26,11 +26,13 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
   };
 
   const updateStatus = async (id, status) => {
+    const confirmed = window.confirm('This status cannot be changed or corrected again. Do you want to continue?');
+    if (!confirmed) return;
     try {
       await axios.patch(`${API}/coordinator/voters/${id}/status`, { status });
       setHistory(current => current.map(voter => voter.id === id ? { ...voter, enrollment_status: status } : voter));
     } catch (err) {
-      setError('Failed to update enrollment status');
+      setError(err.response?.data?.error || 'Failed to update enrollment status');
     }
   };
 
@@ -78,7 +80,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
                 }`}>
                   {voter.enrollment_status}
                 </span>
-                {statusOnly && <select value={voter.enrollment_status} onChange={e => updateStatus(voter.id, e.target.value)} className="mt-2 rounded border border-[#b5c9c1] bg-white px-1 py-1 text-[10px] text-[#173b35]"><option value="pending">Pending</option><option value="in_progress">In progress</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>}
+                {statusOnly && voter.enrollment_status === 'pending' && <select value="" onChange={e => updateStatus(voter.id, e.target.value)} className="mt-2 rounded border border-[#b5c9c1] bg-white px-1 py-1 text-[10px] text-[#173b35]"><option value="">Change status</option><option value="in_progress">In progress</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>}
               </div>
             </div>
           ))}

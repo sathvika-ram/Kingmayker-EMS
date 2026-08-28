@@ -16,18 +16,20 @@ export const AuthProvider = ({ children }) => {
     const role = localStorage.getItem('role');
     const name = localStorage.getItem('name');
     const assigned_constituency = localStorage.getItem('assigned_constituency');
+    const assigned_region = localStorage.getItem('assigned_region');
+    const assigned_mandal = localStorage.getItem('assigned_mandal');
     const id = localStorage.getItem('id');
 
     if (token && role) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      setUser({ token, role, name, assigned_constituency, id });
+      setUser({ token, role, name, assigned_region, assigned_constituency, assigned_mandal, id });
     }
     setLoading(false);
   }, []);
 
   const login = async (email, password) => {
     const response = await axios.post(`${API}/auth/login`, { email, password });
-    const { token, role, name, assigned_constituency } = response.data;
+    const { token, role, name, assigned_region, assigned_constituency, assigned_mandal } = response.data;
     
     const decoded = jwtDecode(token);
     const id = decoded.id;
@@ -36,10 +38,12 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('role', role);
     localStorage.setItem('name', name || '');
     localStorage.setItem('assigned_constituency', assigned_constituency || '');
+    localStorage.setItem('assigned_region', assigned_region || '');
+    localStorage.setItem('assigned_mandal', assigned_mandal || '');
     localStorage.setItem('id', id);
     
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    setUser({ token, role, name, assigned_constituency, id });
+    setUser({ token, role, name, assigned_region, assigned_constituency, assigned_mandal, id });
     return response.data;
   };
 

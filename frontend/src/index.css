@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @layer base {
@@ -17,7 +18,7 @@
     margin: 0;
     background: var(--canvas);
     color: var(--ink);
-    font-family: "DM Sans", "Aptos", "Segoe UI", sans-serif;
+    font-family: "Inter", "Aptos", "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
 
@@ -68,6 +69,34 @@ button.bg-\[\#173b35\].text-white { color: #ffffff !important; }
 .hover\:bg-slate-700:hover, .hover\:bg-slate-800:hover { background-color: #edf4f0 !important; }
 .hover\:bg-blue-700:hover, .hover\:bg-blue-900:hover { background-color: #28584e !important; }
 .shadow-sm { box-shadow: 0 1px 3px rgba(24, 57, 48, 0.05), 0 8px 24px rgba(24, 57, 48, 0.04) !important; }
+
+/* Admin command center contrast and bounded data surfaces. */
+.admin-nav-item { color: #e2e8f0 !important; }
+.admin-nav-item:hover, .admin-nav-item.bg-teal-500 { color: #ffffff !important; }
+.admin-action { color: #ffffff !important; }
+.admin-sidebar-brand { color: #ffffff !important; }
+.admin-data-scroll { max-height: 560px; overflow-y: auto; scrollbar-width: thin; }
+.admin-audit-scroll { max-height: 420px; overflow-y: auto; scrollbar-width: thin; }
+[data-admin-view="overview"] #enrollments,
+[data-admin-view="overview"] #coordinators,
+[data-admin-view="overview"] #geography,
+[data-admin-view="overview"] #audit,
+[data-admin-view="enrollments"] #overview,
+[data-admin-view="enrollments"] #coordinators,
+[data-admin-view="enrollments"] #geography,
+[data-admin-view="enrollments"] #audit,
+[data-admin-view="coordinators"] #overview,
+[data-admin-view="coordinators"] #enrollments,
+[data-admin-view="coordinators"] #geography,
+[data-admin-view="coordinators"] #audit,
+[data-admin-view="geography"] #overview,
+[data-admin-view="geography"] #enrollments,
+[data-admin-view="geography"] #coordinators,
+[data-admin-view="geography"] #audit,
+[data-admin-view="audit-logs"] #overview,
+[data-admin-view="audit-logs"] #enrollments,
+[data-admin-view="audit-logs"] #coordinators,
+[data-admin-view="audit-logs"] #geography { display: none; }
 
 /* Coordinator workspace: a small static layer keeps the form readable and fast. */
 .coordinator-shell {
