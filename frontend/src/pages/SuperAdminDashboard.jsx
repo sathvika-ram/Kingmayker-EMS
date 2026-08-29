@@ -67,9 +67,12 @@ export default function SuperAdminDashboard() {
   }, [filters.region]);
 
   useEffect(() => {
-    if (!filters.constituency) { setMandals([]); return; }
+    const normalizedConstituency = String(filters.constituency || '').trim();
+    if (!normalizedConstituency) { setMandals([]); return; }
     setFilters(current => ({ ...current, mandal: '' }));
-    axios.get(`${API}/geo/mandals`, { params: { constituency: filters.constituency } }).then(result => setMandals(result.data || [])).catch(() => setError('Unable to load mandals.'));
+    axios.get(`${API}/geo/mandals`, { params: { constituency: normalizedConstituency } })
+      .then(result => setMandals(Array.isArray(result.data) ? result.data.map(item => typeof item === 'string' ? { mandal: item } : item) : []))
+      .catch(() => setError('Unable to load mandals.'));
   }, [filters.constituency]);
 
   const metrics = overview.metrics || {};

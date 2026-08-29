@@ -53,11 +53,12 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   }, [formData.region, user?.assigned_constituency]);
 
   useEffect(() => {
+    const normalizedConstituency = String(formData.constituency || '').trim();
     setMandals([]);
     setFormData(current => ({ ...current, mandal: '' }));
-    if (!formData.constituency) return;
-    axios.get(`${API}/geo/mandals`, { params: { constituency: formData.constituency } })
-      .then(response => setMandals(response.data || []))
+    if (!normalizedConstituency) return;
+    axios.get(`${API}/geo/mandals`, { params: { constituency: normalizedConstituency } })
+      .then(response => setMandals(Array.isArray(response.data) ? response.data.map(item => typeof item === 'string' ? { mandal: item } : item) : []))
       .catch(() => setError('Failed to load mandals.'));
   }, [formData.constituency]);
 

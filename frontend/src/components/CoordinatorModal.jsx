@@ -27,11 +27,16 @@ export default function CoordinatorModal({ onClose }) {
   const handleChange = (e) => {
     const next = { ...formData, [e.target.name]: e.target.value };
     if (e.target.name === 'assigned_constituency') {
-      const selected = constituencies.find(item => item.assembly_constituency === e.target.value);
+      const normalized = String(e.target.value || '').trim();
+      const selected = constituencies.find(item => String(item.assembly_constituency || '').trim() === normalized);
       next.assigned_region = selected?.region || '';
       next.assigned_mandal = '';
       setMandals([]);
-      if (e.target.value) axios.get(`${API}/geo/mandals`, { params: { constituency: e.target.value } }).then(response => setMandals(response.data || [])).catch(() => setError('Failed to load mandals.'));
+      if (normalized) {
+        axios.get(`${API}/geo/mandals`, { params: { constituency: normalized } })
+          .then(response => setMandals(Array.isArray(response.data) ? response.data.map(item => typeof item === 'string' ? { mandal: item } : item) : []))
+          .catch(() => setError('Failed to load mandals.'));
+      }
     }
     setFormData(next);
   };

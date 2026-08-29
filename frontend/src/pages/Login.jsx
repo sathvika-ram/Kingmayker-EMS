@@ -31,64 +31,80 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white p-4 sm:p-8">
-      <div className="max-w-md w-full bg-white rounded-2xl border border-[#e4ebe7] shadow-sm p-7 sm:p-10">
-        <div className="flex justify-center mb-6">
-          <div className="w-16 h-16 bg-[#f0f8f4] rounded-2xl flex items-center justify-center overflow-hidden">
-            <img src="/India.jfif" alt="India" className="w-full h-full object-cover" />
+    <div className="login-page">
+      <div className="login-shell">
+        <div className="login-visual" aria-label="Civic engagement backdrop">
+          <div className="login-visual__overlay" />
+          <div className="login-visual__content">
+            <div className="login-brand-badge">
+              <img src="/India.jfif" alt="India" className="login-brand-icon" />
+              <span>Kingmayker EMS</span>
+            </div>
+
+            <div className="login-motto">
+              <p className="login-kicker">Trusted civic operations</p>
+              <h1>Every leader needs a strong system.</h1>
+              <p className="login-quote">
+                “Democracy grows stronger when every citizen is heard, counted, and represented.”
+              </p>
+            </div>
           </div>
         </div>
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b9b3a] text-center mb-2">Kingmayker EMS</p>
-        <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">Sign in to your workspace</h2>
-        <p className="text-sm text-center text-gray-500 mb-8">Authorized access for constituency operations</p>
-        
-        {error && (
-          <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm mb-4">
-            {error}
-          </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter your email"
-            />
-          </div>
+        <div className="login-form-panel">
+          <div className="login-card">
+            <div className="login-card__header">
+              <div className="login-card__logo-wrap">
+                <img src="/parl.jfif" alt="Parliament" className="login-card__logo" />
+              </div>
+              <p className="login-eyebrow">Secure access</p>
+              <h2>Sign in to your workspace</h2>
+              <p className="login-subtitle">Authorized access for constituency operations</p>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter your password"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-            ) : (
-              <>Sign in <ArrowRight size={17} /></>
+            {error && (
+              <div className="login-error">
+                {error}
+              </div>
             )}
-          </button>
-        </form>
+
+            <form onSubmit={handleSubmit} className="login-form">
+              <div className="login-field">
+                <label htmlFor="login-email">Email Address</label>
+                <input
+                  id="login-email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                />
+              </div>
+
+              <div className="login-field">
+                <label htmlFor="login-password">Password</label>
+                <input
+                  id="login-password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                />
+              </div>
+
+              <button type="submit" disabled={loading} className="login-submit">
+                {loading ? (
+                  <span className="login-spinner" aria-label="Loading" />
+                ) : (
+                  <>
+                    Sign in <ArrowRight size={17} />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );

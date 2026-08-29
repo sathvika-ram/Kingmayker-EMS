@@ -41,9 +41,12 @@ export default function LeaderDashboard() {
     axios.get(`${API}/geo/assemblies`, { params: region ? { region } : {} }).then(result => setConstituencies(result.data || [])).catch(() => setError('Unable to load constituencies.'));
   }, [region]);
   useEffect(() => {
-    if (!constituency) { setMandals([]); return; }
+    const normalizedConstituency = String(constituency || '').trim();
+    if (!normalizedConstituency) { setMandals([]); return; }
     setMandal(''); setMandalSearch('');
-    axios.get(`${API}/geo/mandals`, { params: { constituency } }).then(result => setMandals(result.data || [])).catch(() => setError('Unable to load mandals.'));
+    axios.get(`${API}/geo/mandals`, { params: { constituency: normalizedConstituency } })
+      .then(result => setMandals(Array.isArray(result.data) ? result.data.map(item => typeof item === 'string' ? { mandal: item } : item) : []))
+      .catch(() => setError('Unable to load mandals.'));
   }, [constituency]);
   useEffect(() => { loadVoters(); }, [region, constituency, mandal, status]);
   useEffect(() => {
