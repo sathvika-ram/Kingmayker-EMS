@@ -140,7 +140,8 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         constituency, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, notes
     } = req.body;
     try {
-        if (req.user.role === 'constituency_coordinator' && (constituency !== req.user.constituency || (req.user.region && region !== req.user.region) || (req.user.mandal && mandal !== req.user.mandal))) {
+        const isAllAccessAgent = req.user.role === 'constituency_coordinator' && (req.user.constituency === 'All' || req.user.region === 'All' || !req.user.constituency || !req.user.region);
+        if (req.user.role === 'constituency_coordinator' && !isAllAccessAgent && (constituency !== req.user.constituency || (req.user.region && region !== req.user.region) || (req.user.mandal && mandal !== req.user.mandal))) {
             return res.status(403).json({ error: 'You can enroll voters only in your assigned geography' });
         }
         if (req.user.role === 'super_admin') {

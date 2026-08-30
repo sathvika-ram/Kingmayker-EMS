@@ -6,10 +6,11 @@ import { API } from '../utils/api';
 
 const inputClass = 'w-full rounded-md border border-[#9bb4ad] bg-white px-3 py-2.5 text-sm text-[#173b35] placeholder:text-[#a4bbb4] focus:border-[#1d6b5d]';
 const labelClass = 'mb-1 block text-xs font-semibold text-[#52736a]';
+const isFullAccessAgent = (user) => user?.role === 'constituency_coordinator' && (user?.assigned_region === 'All' || user?.assigned_constituency === 'All' || !user?.assigned_region || !user?.assigned_constituency);
 const getInitialFormState = (user) => ({
   voter_name: '', father_name: '', date_of_birth: '', mobile_number: '', email: '', gender: '', voter_id: '',
   citizenship_status: true, nationality: 'Indian', application_type: 'new',
-  region: user?.assigned_region || '', constituency: user?.assigned_constituency || '', mandal: '', village: '',
+  region: user?.assigned_region && user.assigned_region !== 'All' ? user.assigned_region : '', constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', mandal: '', village: '',
   degree_qualification: '', university: '', college: '', course: '', graduation_year: '',
   form18_number: '', acknowledgement_number: '', reference_number: '', notes: '',
   complete_address: '', district: '', state: 'Telangana', pincode: '', degree_certificate_url: ''
@@ -17,6 +18,7 @@ const getInitialFormState = (user) => ({
 
 export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   const { user } = useAuth();
+  const fullAccessAgent = isFullAccessAgent(user);
   const initialFormState = getInitialFormState(user);
   const [formData, setFormData] = useState(() => {
     try { return { ...initialFormState, ...JSON.parse(localStorage.getItem(`enrollment-draft-${user?.id}`) || '{}') }; }
@@ -45,12 +47,16 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   useEffect(() => {
     setAssemblies([]);
     setMandals([]);
-    setFormData(current => ({ ...current, constituency: user?.assigned_constituency || '', mandal: '' }));
+    if (!fullAccessAgent) {
+      setFormData(current => ({ ...current, constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', mandal: '' }));
+    } else {
+      setFormData(current => ({ ...current, constituency: '', mandal: '' }));
+    }
     if (!formData.region) return;
     axios.get(`${API}/geo/assemblies`, { params: { region: formData.region } })
       .then(response => setAssemblies(response.data || []))
       .catch(() => setError('Failed to load assembly constituencies.'));
-  }, [formData.region, user?.assigned_constituency]);
+  }, [formData.region, user?.assigned_constituency, fullAccessAgent]);
 
   useEffect(() => {
     const normalizedConstituency = String(formData.constituency || '').trim();
@@ -158,7 +164,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
         </section>
 
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Address and constituency</h3>
-          <div className="grid gap-3 sm:grid-cols-2"><Field label="Region *" name="region" value={formData.region} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.region} as="select" disabled={Boolean(user?.assigned_region)}><option value="">Select region</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</Field><Field label="Assembly constituency *" name="constituency" value={formData.constituency} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.constituency} as="select" disabled={Boolean(user?.assigned_constituency)}><option value="">Select constituency</option>{assemblies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</Field></div>
+          <div className="grid gap-3 sm:grid-cols-2"><Field label="Region *" name="region" value={formData.region} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.region} as="select" disabled={Boolean(user?.assigned_region && user.assigned_region !== 'All')}><option value="">Select region</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</Field><Field label="Assembly constituency *" name="constituency" value={formData.constituency} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.constituency} as="select" disabled={Boolean(user?.assigned_constituency && user.assigned_constituency !== 'All')}><option value="">Select constituency</option>{assemblies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</Field></div>
           <div><label className={labelClass}>Mandal *</label><select name="mandal" required value={formData.mandal} onChange={handleChange} disabled={!formData.constituency} className={inputClass}><option value="">Select mandal</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</select></div>
           <Field label="Complete address *" name="complete_address" value={formData.complete_address} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.complete_address} placeholder="H.No, STREET, city, district" />
           <div className="grid gap-3 sm:grid-cols-2"><Field label="Village / Ward *" name="village" value={formData.village} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.village} placeholder="Enter village or ward" /><Field label="District *" name="district" value={formData.district} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.district} placeholder="Enter district" /></div>
