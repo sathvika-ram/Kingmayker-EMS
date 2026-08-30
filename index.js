@@ -153,6 +153,14 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) return res.status(400).json({ error: 'Enter a valid personal email address.' });
         if (!/^\d{6}$/.test(String(pincode)) || Number(graduation_year) > 2023) return res.status(400).json({ error: 'Check the pincode and graduation year.' });
+        const dateOfBirth = new Date(date_of_birth);
+        const ageAtGraduation = Number(graduation_year) - dateOfBirth.getFullYear();
+        if (Number.isNaN(dateOfBirth.getTime()) || (Date.now() - dateOfBirth.getTime()) / (1000 * 60 * 60 * 24 * 365.25) < 20) {
+            return res.status(400).json({ error: 'Voter must be at least 20 years old.' });
+        }
+        if (ageAtGraduation < 20) {
+            return res.status(400).json({ error: 'Voter must be at least 20 years old.' });
+        }
         const voterEmail = String(email || `${String(voter_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@kingmayker.com`).trim();
         const newVoter = await pool.query(
             `INSERT INTO voters (
@@ -323,7 +331,7 @@ app.patch('/api/coordinator/voters/:id/status', authenticateToken, requireRoles(
     const { id } = req.params;
     const { status } = req.body;
     try {
-        if (!['in_progress', 'approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid enrollment status.' });
+        if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Only approved or rejected status is allowed.' });
         const updatedVoter = await pool.query(`UPDATE voters SET enrollment_status = $1 WHERE id = $2 AND coordinator_id = $3 AND enrollment_status = 'pending' RETURNING *`, [status, id, req.user.id]);
         if (!updatedVoter.rowCount) return res.status(409).json({ error: 'This enrollment status has already been changed and cannot be corrected.' });
         res.json({ voter: updatedVoter.rows[0] });

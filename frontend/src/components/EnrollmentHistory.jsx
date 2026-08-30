@@ -80,7 +80,20 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
                 }`}>
                   {voter.enrollment_status}
                 </span>
-                {statusOnly && voter.enrollment_status === 'pending' && <select value="" onChange={e => updateStatus(voter.id, e.target.value)} className="mt-2 rounded border border-[#b5c9c1] bg-white px-1 py-1 text-[10px] text-[#173b35]"><option value="">Change status</option><option value="in_progress">In progress</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>}
+                {statusOnly && voter.enrollment_status === 'pending' && (
+                  <select
+                    value=""
+                    onChange={e => {
+                      const nextStatus = e.target.value;
+                      if (nextStatus) updateStatus(voter.id, nextStatus);
+                    }}
+                    className="mt-2 rounded border border-[#b5c9c1] bg-white px-1 py-1 text-[10px] text-[#173b35]"
+                  >
+                    <option value="">Select status</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                )}
               </div>
             </div>
           ))}

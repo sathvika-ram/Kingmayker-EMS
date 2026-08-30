@@ -88,7 +88,10 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     if (name === 'email' && value && !/^\S+@\S+\.\S+$/.test(value)) return 'Enter a valid personal email.';
     if (name === 'graduation_year' && value && (Number(value) < 1900 || Number(value) > 2023)) return 'Graduation year must be between 1900 and 2023.';
     if (name === 'pincode' && value && !/^\d{6}$/.test(value)) return 'Pincode must be exactly 6 digits.';
-    if (name === 'date_of_birth' && value && calculateAge(value) < 18) return 'Voter must be at least 18 years old.';
+    if (name === 'date_of_birth' && value && calculateAge(value) < 20) return 'Voter must be at least 20 years old.';
+    if (name === 'graduation_year' && value && formData.date_of_birth && Number(value) - new Date(formData.date_of_birth).getFullYear() < 20) {
+      return 'Voter must be at least 20 years old.';
+    }
     return '';
   };
 
@@ -108,6 +111,8 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     if (Object.values(nextErrors).some(Boolean)) return setError('Please correct the highlighted fields.');
     if (!formData.acknowledgement_number) return setError('Acknowledgement number is required.');
     if (Number(formData.graduation_year) > 2023) return setError('Year of graduation must be 2023 or earlier.');
+    if (formData.date_of_birth && calculateAge(formData.date_of_birth) < 20) return setError('Voter must be at least 20 years old.');
+    if (formData.graduation_year && formData.date_of_birth && Number(formData.graduation_year) - new Date(formData.date_of_birth).getFullYear() < 20) return setError('Voter must be at least 20 years old.');
     if (!formData.degree_certificate_url) return setError('Please upload the degree certificate.');
     if (!formData.form18_number && !formData.acknowledgement_number && !formData.reference_number) return setError('Enter Form 18, acknowledgement, or reference number.');
 
