@@ -20,7 +20,7 @@ const DefaultRedirect = () => {
   
   if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'super_admin') return <Navigate to="/admin" replace />;
+  if (user.role === 'super_admin') return <Navigate to="/admin/analytics" replace />;
   if (user.role === 'party_leader') return <Navigate to="/leader" replace />;
   if (user.role === 'constituency_coordinator') return <Navigate to="/coordinator" replace />;
   
@@ -34,6 +34,7 @@ function App() {
         <Routes>
           <Route path="/" element={<DefaultRedirect />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/admin" element={<Navigate to="/admin/analytics" replace />} />
           <Route 
             path="/coordinator/*" 
             element={

@@ -19,7 +19,7 @@ export default function Login() {
     try {
       const data = await login(email, password);
       if (['super_admin', 'party_leader'].includes(data.role)) {
-        navigate(data.role === 'party_leader' ? '/leader' : '/admin');
+        navigate(data.role === 'party_leader' ? '/leader' : '/admin/analytics');
       } else {
         navigate('/coordinator');
       }
@@ -38,7 +38,7 @@ export default function Login() {
           <div className="login-visual__content">
             <div className="login-brand-badge">
               <img src="/India.jfif" alt="India" className="login-brand-icon" />
-              <span>Kingmayker EMS</span>
+              <span className="login-brand-text">KINGMAYKER EMS</span>
             </div>
 
             <div className="login-motto">

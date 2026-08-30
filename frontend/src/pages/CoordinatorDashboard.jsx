@@ -20,10 +20,10 @@ export default function CoordinatorDashboard() {
       {/* Mobile-friendly Header */}
       <header className="coordinator-header text-[#173b35] p-4 border-b border-[#e4ebe7] sticky top-0 z-10 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <img src="/India.jfif" alt="India" className="coordinator-logo" />
+          <img src="/India.jfif" alt="EMS" className="coordinator-logo" />
           <div>
-            <p className="coordinator-brand">Kingmayker EMS</p>
-            <h1 className="text-xl font-bold">Coordinator Portal</h1>
+            <div className="app-brand-wrap"><p className="app-brand-text app-brand-desktop">KINGMAYKER EMS</p><p className="app-brand-text app-brand-mobile">EMS</p></div>
+            <h1 className="dashboard-page-title agent-page-title">AGENT OVERVIEW</h1>
             <p className="text-xs text-gray-500">{user?.assigned_constituency} Constituency</p>
           </div>
         </div>
