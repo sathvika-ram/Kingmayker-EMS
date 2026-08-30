@@ -70,7 +70,13 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
 
   const calculateAge = (dob) => {
     if (!dob) return '';
-    return Math.floor((Date.now() - new Date(dob).getTime()) / 31557600000);
+    const birthDate = new Date(dob);
+    if (Number.isNaN(birthDate.getTime())) return '';
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age -= 1;
+    return age;
   };
 
   const handleChange = (e) => {
@@ -89,8 +95,13 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     if (name === 'graduation_year' && value && (Number(value) < 1900 || Number(value) > 2023)) return 'Graduation year must be between 1900 and 2023.';
     if (name === 'pincode' && value && !/^\d{6}$/.test(value)) return 'Pincode must be exactly 6 digits.';
     if (name === 'date_of_birth' && value && calculateAge(value) < 20) return 'Voter must be at least 20 years old.';
-    if (name === 'graduation_year' && value && formData.date_of_birth && Number(value) - new Date(formData.date_of_birth).getFullYear() < 20) {
-      return 'Voter must be at least 20 years old.';
+    if (name === 'graduation_year' && value && formData.date_of_birth) {
+      const birthYear = new Date(formData.date_of_birth).getFullYear();
+      if (Number(value) - birthYear < 20) return 'Voter must be at least 20 years old.';
+    }
+    if (name === 'date_of_birth' && value && formData.graduation_year) {
+      const birthYear = new Date(value).getFullYear();
+      if (Number(formData.graduation_year) - birthYear < 20) return 'Voter must be at least 20 years old.';
     }
     return '';
   };
@@ -112,7 +123,10 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     if (!formData.acknowledgement_number) return setError('Acknowledgement number is required.');
     if (Number(formData.graduation_year) > 2023) return setError('Year of graduation must be 2023 or earlier.');
     if (formData.date_of_birth && calculateAge(formData.date_of_birth) < 20) return setError('Voter must be at least 20 years old.');
-    if (formData.graduation_year && formData.date_of_birth && Number(formData.graduation_year) - new Date(formData.date_of_birth).getFullYear() < 20) return setError('Voter must be at least 20 years old.');
+    if (formData.graduation_year && formData.date_of_birth) {
+      const birthYear = new Date(formData.date_of_birth).getFullYear();
+      if (Number(formData.graduation_year) - birthYear < 20) return setError('Voter must be at least 20 years old.');
+    }
     if (!formData.degree_certificate_url) return setError('Please upload the degree certificate.');
     if (!formData.form18_number && !formData.acknowledgement_number && !formData.reference_number) return setError('Enter Form 18, acknowledgement, or reference number.');
 
@@ -155,7 +169,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Personal details</h3>
           <div className="grid gap-3 sm:grid-cols-2"><Field label="Voter ID *" name="voter_id" value={formData.voter_id} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.voter_id} placeholder="Enter voter ID" /><Field label="Gender *" name="gender" value={formData.gender} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.gender} as="select"><option value="">Select gender</option><option>Female</option><option>Male</option><option>Other</option></Field></div>
           <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>Full name *</label><input name="voter_name" required value={formData.voter_name} onChange={handleChange} className={inputClass} placeholder="Enter full name" /></div><div><label className={labelClass}>Father's name/Husband's name</label><input name="father_name" value={formData.father_name} onChange={handleChange} className={inputClass} placeholder="Enter father's name" /></div></div>
-          <div className="grid gap-3 sm:grid-cols-3"><div><label className={labelClass}>Date of birth *</label><input type="date" name="date_of_birth" required value={formData.date_of_birth} onChange={handleChange} onBlur={handleBlur} className={`${inputClass} ${fieldErrors.date_of_birth ? 'border-[#c45d52] bg-[#fff8f7]' : ''}`} />{fieldErrors.date_of_birth && <p className="mt-1 text-xs font-medium text-[#b44d45]" role="alert">{fieldErrors.date_of_birth}</p>}</div><div><label className={labelClass}>Age</label><input disabled value={calculateAge(formData.date_of_birth)} className={`${inputClass} bg-[#edf3f0]`} placeholder="Auto-calculated" /></div><Field label="Mobile number *" name="mobile_number" type="tel" value={formData.mobile_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.mobile_number} placeholder="10-digit number" /></div>
+          <div className="grid gap-3 sm:grid-cols-3"><div><label className={labelClass}>Date of birth *</label><input type="date" name="date_of_birth" required value={formData.date_of_birth} onChange={handleChange} onBlur={handleBlur} className={`${inputClass} ${fieldErrors.date_of_birth ? 'border-[#c45d52] bg-[#fff8f7]' : ''}`} />{fieldErrors.date_of_birth && <p className="mt-1 text-xs font-medium text-[#b44d45]" role="alert">{fieldErrors.date_of_birth}</p>}</div><div><label className={labelClass}>Age</label><input readOnly value={calculateAge(formData.date_of_birth)} className={`${inputClass} bg-[#edf3f0]`} placeholder="Auto-calculated" /></div><Field label="Mobile number *" name="mobile_number" type="tel" value={formData.mobile_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.mobile_number} placeholder="10-digit number" /></div>
           <Field label="Personal email *" name="email" type="email" value={formData.email} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.email} placeholder="name@example.com" />
           <div><label className={labelClass}>Nationality *</label><input value="Indian" readOnly className={`${inputClass} bg-[#edf3f0]`} /><input type="hidden" name="nationality" value="Indian" /></div>
         </section>
