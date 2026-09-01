@@ -25,12 +25,15 @@ async function ensureVoterColumns() {
     await pool.query(`
         ALTER TABLE voters
         ADD COLUMN IF NOT EXISTS notes TEXT,
-        ADD COLUMN IF NOT EXISTS complete_address TEXT
+        ADD COLUMN IF NOT EXISTS complete_address TEXT,
+        ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS degree_certificate_url TEXT
     `);
-        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
-        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
-        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_mandal VARCHAR(120)');
-        await pool.query('ALTER TABLE users ALTER COLUMN email DROP NOT NULL');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_mandal VARCHAR(120)');
+    await pool.query('ALTER TABLE users ALTER COLUMN email DROP NOT NULL');
+    await pool.query('ALTER TABLE voters ALTER COLUMN email DROP NOT NULL');
 }
 
 function normalizeEmailPart(value) {
@@ -135,7 +138,7 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
 app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), async (req, res) => {
     // Handling both sets of fields from the modified form
     const {
-        voter_id, voter_name, father_name, date_of_birth, mobile_number, email, gender, nationality, application_type, university, college, course,
+        voter_id, voter_name, father_name, date_of_birth, mobile_number, email, gender, nationality, application_type,
         degree_qualification, graduation_year, form18_number, acknowledgement_number, reference_number, region,
         constituency, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, notes
     } = req.body;
@@ -148,36 +151,38 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             const coordinator = await pool.query('SELECT id FROM users WHERE id = $1 AND role = \'constituency_coordinator\'', [req.body.coordinator_id]);
             if (!coordinator.rowCount) return res.status(400).json({ error: 'Select a valid coordinator for this enrollment.' });
         }
-        if (!voter_id || !voter_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !email || !university || !college || !course || !degree_qualification || !graduation_year || !complete_address || !village || !district || !pincode) {
+        if (!voter_id || !voter_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !degree_qualification || !graduation_year || !acknowledgement_number || !complete_address || !village || !district || !pincode) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
         }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) return res.status(400).json({ error: 'Enter a valid personal email address.' });
-        if (!/^\d{6}$/.test(String(pincode)) || Number(graduation_year) > 2023) return res.status(400).json({ error: 'Check the pincode and graduation year.' });
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) return res.status(400).json({ error: 'Enter a valid personal email address.' });
+        if (!/^\d{6}$/.test(String(pincode))) return res.status(400).json({ error: 'Check the pincode.' });
+        if (Number(graduation_year) > 2023) return res.status(400).json({ error: 'Only graduates who passed out before November 2023 are eligible.' });
+
         const dateOfBirth = new Date(date_of_birth);
         const ageAtGraduation = Number(graduation_year) - dateOfBirth.getFullYear();
-        if (Number.isNaN(dateOfBirth.getTime()) || (Date.now() - dateOfBirth.getTime()) / (1000 * 60 * 60 * 24 * 365.25) < 20) {
-            return res.status(400).json({ error: 'Voter must be at least 20 years old.' });
+        if (Number.isNaN(dateOfBirth.getTime())) {
+            return res.status(400).json({ error: 'Invalid date of birth.' });
         }
         if (ageAtGraduation < 20) {
-            return res.status(400).json({ error: 'Voter must be at least 20 years old.' });
+            return res.status(400).json({ error: 'Invalid age' });
         }
         const voterEmail = String(email || `${String(voter_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@kingmayker.com`).trim();
         const newVoter = await pool.query(
             `INSERT INTO voters (
-                coordinator_id, voter_name, father_name, date_of_birth, 
-                mobile_number, citizenship_status, constituency, mandal, 
+                coordinator_id, voter_name, father_name, date_of_birth,
+                mobile_number, citizenship_status, constituency, mandal,
                 village, degree_qualification, graduation_year, degree_certificate_url, enrollment_status,
-                voter_id, gender, email, nationality, application_type, university, college, course,
+                voter_id, gender, email, nationality, application_type,
                 form18_number, acknowledgement_number, reference_number, house_number, street,
                 complete_address, district, state, pincode, region, notes
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending',
-                $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
+                $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
             RETURNING *`,
             [
                 req.body.coordinator_id || req.user.id, voter_name, father_name, date_of_birth,
                 mobile_number, true, constituency, mandal,
-                village, degree_qualification || course, graduation_year, degree_certificate_url,
-                voter_id, gender, voterEmail, nationality, application_type, university, college, course,
+                village, degree_qualification, graduation_year, degree_certificate_url,
+                voter_id, gender, voterEmail, nationality, application_type,
                 form18_number, acknowledgement_number, reference_number, house_number, street,
                 complete_address || [house_number, street].filter(Boolean).join(', '), district, state, pincode, region, notes
             ]

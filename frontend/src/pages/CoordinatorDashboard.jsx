@@ -19,12 +19,15 @@ export default function CoordinatorDashboard() {
     <div className="coordinator-shell min-h-screen flex flex-col">
       {/* Mobile-friendly Header */}
       <header className="coordinator-header text-[#173b35] p-4 border-b border-[#e4ebe7] sticky top-0 z-10 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <img src="/India.jfif" alt="EMS" className="coordinator-logo" />
-          <div>
-            <div className="app-brand-wrap"><p className="app-brand-text app-brand-desktop">KINGMAYKER EMS</p><p className="app-brand-text app-brand-mobile">EMS</p></div>
-            <h1 className="dashboard-page-title agent-page-title">AGENT OVERVIEW</h1>
-            <p className="text-xs text-gray-500">{user?.assigned_constituency} Constituency</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <img src="/rakeshreddy.png" alt="EMS" className="coordinator-logo" />
+          <div className="min-w-0">
+            <div className="app-brand-wrap">
+              <p className="app-brand-text app-brand-desktop">KINGMAYKER EMS</p>
+              <p className="app-brand-text app-brand-mobile">EMS</p>
+            </div>
+            <p className="text-[10px] font-semibold text-gray-500 sm:hidden">{user?.assigned_constituency || 'Constituency'} Constituency</p>
+            <h1 className="dashboard-page-title agent-page-title hidden sm:block">AGENT OVERVIEW</h1>
           </div>
         </div>
         <div className="coordinator-search"><Search size={16} /><input value={search} onChange={handleSearch} placeholder="Search by Voter ID" aria-label="Search by Voter ID" /></div>

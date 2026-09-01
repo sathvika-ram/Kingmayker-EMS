@@ -128,7 +128,7 @@
   padding: 24px 56px;
   background:
     linear-gradient(135deg, rgba(10, 28, 22, 0.82), rgba(11, 45, 36, 0.58)),
-    url('/leadermain.png') 60% center/cover no-repeat;
+    url('/address.png') 60% center/cover no-repeat;
 }
 
 .login-shell {
@@ -164,7 +164,7 @@
   min-height: 100%;
   background:
     linear-gradient(180deg, rgba(12, 16, 17, 0.18), rgba(7, 14, 13, 0.8)),
-    url('/rakeshredddy.jpeg') 60% 18%/cover no-repeat;
+    url('/rakesh.jpeg') 60% 18%/cover no-repeat;
 }
 
 .login-visual__overlay {
@@ -208,6 +208,9 @@
   width: 34px;
   height: 34px;
   object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 8px 20px rgba(0, 0, 0, 0.12);
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
@@ -296,8 +299,8 @@
   height: 52px;
   border-radius: 14px;
   object-fit: cover;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 .login-eyebrow {
@@ -629,7 +632,9 @@ button.bg-\[\#173b35\].text-white { color: #ffffff !important; }
   height: 42px;
   border-radius: 10px;
   object-fit: cover;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16), 0 8px 20px rgba(20, 31, 28, 0.08);
 }
 .coordinator-brand {
   color: var(--ink);
@@ -780,9 +785,10 @@ button.bg-\[\#173b35\].text-white { color: #ffffff !important; }
 .leader-logo {
   width: 48px;
   height: 48px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 11px;
   object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 8px 20px rgba(20, 31, 28, 0.08);
 }
 .leader-brand {
   color: var(--ink);

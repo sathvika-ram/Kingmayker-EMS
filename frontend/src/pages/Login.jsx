@@ -36,11 +36,7 @@ export default function Login() {
         <div className="login-visual" aria-label="Civic engagement backdrop">
           <div className="login-visual__overlay" />
           <div className="login-visual__content">
-            <div className="login-brand-badge">
-              <img src="/India.jfif" alt="India" className="login-brand-icon" />
-              <span className="login-brand-text">KINGMAYKER EMS</span>
-            </div>
-
+            
             <div className="login-motto">
               <p className="login-kicker">Trusted civic operations</p>
               <h1>Every leader needs a strong system.</h1>
@@ -55,7 +51,7 @@ export default function Login() {
           <div className="login-card">
             <div className="login-card__header">
               <div className="login-card__logo-wrap">
-                <img src="/parl.jfif" alt="Parliament" className="login-card__logo" />
+                <img src="/parl.jfif" alt="Rakesh Reddy" className="login-card__logo" />
               </div>
               <p className="login-eyebrow">Secure access</p>
               <h2>Sign in to your workspace</h2>
