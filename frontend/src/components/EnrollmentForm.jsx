@@ -10,8 +10,8 @@ const requiredStar = <span className="text-red-600">*</span>;
 const isFullAccessAgent = (user) => user?.role === 'constituency_coordinator' && (user?.assigned_region === 'All' || user?.assigned_constituency === 'All' || !user?.assigned_region || !user?.assigned_constituency);
 const getInitialFormState = (user) => ({
   voter_name: '', father_name: '', date_of_birth: '', mobile_number: '', email: '', gender: '', voter_id: '',
-  citizenship_status: true, nationality: 'Indian', application_type: 'new',
-  region: user?.assigned_region && user.assigned_region !== 'All' ? user.assigned_region : '', constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', mandal: '', village: '',
+  citizenship_status: true, nationality: 'Indian',
+  region: user?.assigned_region && user.assigned_region !== 'All' ? user.assigned_region : '', constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', booth_number: '', mandal: '', village: '',
   degree_qualification: '', graduation_year: '',
   form18_number: '', acknowledgement_number: '', reference_number: '', notes: '',
   complete_address: '', district: '', state: 'Telangana', pincode: '', degree_certificate_url: '', degree_certificate_urls: []
@@ -99,7 +99,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   };
 
   const validateField = (name, value) => {
-    const required = ['voter_id', 'voter_name', 'date_of_birth', 'mobile_number', 'gender', 'degree_qualification', 'graduation_year', 'acknowledgement_number', 'region', 'constituency', 'mandal', 'complete_address', 'village', 'district', 'pincode'];
+    const required = ['voter_id', 'voter_name', 'father_name', 'date_of_birth', 'mobile_number', 'gender', 'degree_qualification', 'graduation_year', 'acknowledgement_number', 'region', 'constituency', 'booth_number', 'mandal', 'complete_address', 'village', 'district', 'pincode'];
     if (required.includes(name) && !String(value || '').trim()) return 'This field is required.';
     if (name === 'mobile_number' && value && !/^\d{10}$/.test(value)) return 'Mobile number must be exactly 10 digits.';
     if (name === 'email' && value && !/^\S+@\S+\.\S+$/.test(value)) return 'Enter a valid personal email.';
@@ -125,8 +125,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
       return;
     }
     setFiles(selectedFiles);
-    const documentUrls = selectedFiles.map(selectedFile => `https://storage.mock.local/${selectedFile.name}`);
-    setFormData(current => ({ ...current, degree_certificate_url: documentUrls[0] || '', degree_certificate_urls: documentUrls }));
+    setFormData(current => ({ ...current, degree_certificate_url: '', degree_certificate_urls: [] }));
   };
 
   const handleSubmit = async (e) => {
@@ -141,15 +140,21 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
       const birthYear = new Date(formData.date_of_birth).getFullYear();
       if (!Number.isNaN(birthYear) && Number(formData.graduation_year) - birthYear < 20) return setError('Invalid age');
     }
-    const documentUrls = formData.degree_certificate_urls?.length
-      ? formData.degree_certificate_urls
-      : (formData.degree_certificate_url ? [formData.degree_certificate_url] : []);
-    if (!documentUrls.length) return setError('Please upload at least one supporting document.');
+    if (!files.length && !formData.degree_certificate_urls?.length && !formData.degree_certificate_url) return setError('Please upload at least one supporting document.');
     if (!formData.form18_number && !formData.acknowledgement_number && !formData.reference_number) return setError('Enter Form 18, acknowledgement, or reference number.');
 
     setLoading(true);
     try {
-      const response = await axios.post(`${API}/voters/enroll`, { ...formData, coordinator_id: coordinatorId || user.id });
+      const enrollmentData = { ...formData, coordinator_id: coordinatorId || user.id };
+      delete enrollmentData.application_type;
+      if (files.length) {
+        const uploadData = new FormData();
+        files.forEach(selectedFile => uploadData.append('files', selectedFile));
+        const uploadResponse = await axios.post(`${API}/uploads`, uploadData);
+        enrollmentData.degree_certificate_url = uploadResponse.data.urls[0] || '';
+        enrollmentData.degree_certificate_urls = uploadResponse.data.urls;
+      }
+      const response = await axios.post(`${API}/voters/enroll`, enrollmentData);
       setSubmittedId(response.data.voter?.id);
       setSuccess(true);
       setFormData(initialFormState);
@@ -185,21 +190,20 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
       <form onSubmit={handleSubmit} className="space-y-4 pb-8">
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Personal details</h3>
           <div className="grid gap-3 sm:grid-cols-2"><Field label={<><span>Voter ID</span>{requiredStar}</>} name="voter_id" value={formData.voter_id} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.voter_id} placeholder="Enter voter ID" /><Field label={<><span>Gender</span>{requiredStar}</>} name="gender" value={formData.gender} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.gender} as="select"><option value="">Select gender</option><option>Female</option><option>Male</option><option>Other</option></Field></div>
-          <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}><span>Full name</span>{requiredStar}</label><input name="voter_name" required value={formData.voter_name} onChange={handleChange} className={inputClass} placeholder="Enter full name" /></div><div><label className={labelClass}>Father's name/Husband's name</label><input name="father_name" value={formData.father_name} onChange={handleChange} className={inputClass} placeholder="Enter father's name" /></div></div>
+          <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}><span>Full name</span>{requiredStar}</label><input name="voter_name" required value={formData.voter_name} onChange={handleChange} className={inputClass} placeholder="Enter full name" /></div><div><label className={labelClass}><span>Father's name/Husband's name</span>{requiredStar}</label><input name="father_name" required value={formData.father_name} onChange={handleChange} onBlur={handleBlur} className={`${inputClass} ${fieldErrors.father_name ? 'border-[#c45d52] bg-[#fff8f7]' : ''}`} placeholder="Enter father's or husband's name" />{fieldErrors.father_name && <p className="mt-1 text-xs font-medium text-[#b44d45]" role="alert">{fieldErrors.father_name}</p>}</div></div>
           <div className="grid gap-3 sm:grid-cols-3"><div><label className={labelClass}><span>Date of birth</span>{requiredStar}</label><input type="date" name="date_of_birth" required value={formData.date_of_birth} onChange={handleChange} onBlur={handleBlur} className={`${inputClass} ${fieldErrors.date_of_birth ? 'border-[#c45d52] bg-[#fff8f7]' : ''}`} />{fieldErrors.date_of_birth && <p className="mt-1 text-xs font-medium text-[#b44d45]" role="alert">{fieldErrors.date_of_birth}</p>}</div><div><label className={labelClass}>Age</label><input readOnly value={calculateAge(formData.date_of_birth)} className={`${inputClass} bg-[#edf3f0]`} placeholder="Auto-calculated" />{formData.date_of_birth && formData.graduation_year && getGraduationEligibilityError(formData.graduation_year, formData.date_of_birth) === 'Invalid age' && <p className="mt-1 text-xs font-medium text-[#b44d45]" role="alert">Invalid age</p>}</div><Field label={<><span>Mobile number</span>{requiredStar}</>} name="mobile_number" type="tel" value={formData.mobile_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.mobile_number} placeholder="WhatsApp number" /></div>
           <Field label={<><span>Personal email</span><span className="ml-1 font-normal text-[#849890]">(optional)</span></>} name="email" type="email" value={formData.email} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.email} placeholder="name@example.com" />
           <div><label className={labelClass}>Nationality</label><input value="Indian" readOnly className={`${inputClass} bg-[#edf3f0]`} /><input type="hidden" name="nationality" value="Indian" /></div>
         </section>
 
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Application and education</h3>
-          <div><label className={labelClass}>Application type</label><div className="flex gap-5 pt-1"><label className="flex items-center gap-2 text-sm text-[#465b55]"><input type="radio" name="application_type" value="new" checked={formData.application_type === 'new'} onChange={handleChange} /> New</label><label className="flex items-center gap-2 text-sm text-[#465b55]"><input type="radio" name="application_type" value="renewal" checked={formData.application_type === 'renewal'} onChange={handleChange} /> Renewal</label></div></div>
           <div className="grid gap-3 sm:grid-cols-2"><Field label={<><span>Degree</span>{requiredStar}</>} name="degree_qualification" value={formData.degree_qualification} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.degree_qualification} placeholder="e.g. B.Tech" /><div><Field label={<><span>Year of graduation</span>{requiredStar}</>} name="graduation_year" type="number" value={formData.graduation_year} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.graduation_year} placeholder="YYYY" /><p className="mt-1 text-xs font-medium text-red-600">{formData.graduation_year ? getGraduationEligibilityError(formData.graduation_year, formData.date_of_birth) || (Number(formData.graduation_year) > 2023 ? 'Only graduates who passed out before November 2023 are eligible.' : '') : 'Only graduates who passed out before November 2023 are eligible.'}</p></div></div>
           <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}><span>Acknowledgement number</span>{requiredStar}</label><input name="acknowledgement_number" required value={formData.acknowledgement_number} onChange={handleChange} className={inputClass} /></div><div><label className={labelClass}>Notes <span className="font-normal text-[#849890]">(optional)</span></label><input name="notes" value={formData.notes} onChange={handleChange} className={inputClass} placeholder="Add a note if needed" /></div></div>
         </section>
 
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Address and constituency</h3>
           <div className="grid gap-3 sm:grid-cols-2"><Field label={<><span>Region</span>{requiredStar}</>} name="region" value={formData.region} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.region} as="select" disabled={Boolean(user?.assigned_region && user.assigned_region !== 'All')}><option value="">Select region</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</Field><Field label={<><span>Assembly constituency</span>{requiredStar}</>} name="constituency" value={formData.constituency} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.constituency} as="select" disabled={Boolean(user?.assigned_constituency && user.assigned_constituency !== 'All')}><option value="">Select constituency</option>{assemblies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</Field></div>
-          <div><label className={labelClass}><span>Mandal</span>{requiredStar}</label><select name="mandal" required value={formData.mandal} onChange={handleChange} disabled={!formData.constituency} className={inputClass}><option value="">Select mandal</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</select></div>
+          <div className="grid gap-3 sm:grid-cols-2"><Field label={<><span>Booth Num</span>{requiredStar}</>} name="booth_number" value={formData.booth_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.booth_number} placeholder="Enter booth number" /><div><label className={labelClass}><span>Mandal</span>{requiredStar}</label><select name="mandal" required value={formData.mandal} onChange={handleChange} disabled={!formData.constituency} className={inputClass}><option value="">Select mandal</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</select></div></div>
           <Field label={<><span>Complete address</span>{requiredStar}</>} name="complete_address" value={formData.complete_address} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.complete_address} placeholder="H.No, STREET, city, district" />
           <div className="grid gap-3 sm:grid-cols-2"><Field label={<><span>Village / Ward</span>{requiredStar}</>} name="village" value={formData.village} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.village} placeholder="Enter village or ward" /><Field label={<><span>District</span>{requiredStar}</>} name="district" value={formData.district} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.district} placeholder="Enter district" /></div>
           <div className="grid gap-3 sm:grid-cols-2"><Field label={<><span>State</span>{requiredStar}</>} name="state" value={formData.state} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.state} readOnly /><Field label={<><span>Pincode</span>{requiredStar}</>} name="pincode" value={formData.pincode} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.pincode} placeholder="6-digit pincode" /></div>

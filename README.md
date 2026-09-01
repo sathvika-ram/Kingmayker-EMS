@@ -29,6 +29,18 @@ The backend is built with Node.js and Express, connecting to a PostgreSQL databa
    ```
    The backend will run on `http://localhost:5000`.
 
+   ### Supporting document storage
+
+   Supporting documents are uploaded to Supabase Storage, and their public URLs are saved in the `voters.degree_certificate_url` and `voters.degree_certificate_urls` columns. Configure these backend environment variables before using uploads:
+
+   ```env
+   SUPABASE_URL=https://your-project-ref.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
+   SUPABASE_STORAGE_BUCKET=voter-documents
+   ```
+
+   The service-role key must be configured only on the backend or hosting provider, never in the frontend. The backend creates the `voter-documents` bucket as public on first upload if it does not already exist. Files are limited to two per enrollment and 10 MB per file.
+
 ## Running the Frontend
 
 The frontend is built with React, Vite, and Tailwind CSS.

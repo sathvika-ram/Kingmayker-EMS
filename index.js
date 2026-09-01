@@ -3,6 +3,8 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const crypto = require('crypto');
+const multer = require('multer');
 require('dotenv').config();
 
 const app = express();
@@ -20,6 +22,24 @@ const pool = new Pool({
 pool.on('error', error => console.error('PostgreSQL pool error:', error.message));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'YOUR_SECRET_JWT_KEY';
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { files: 2, fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, callback) => {
+        if (/^(image\/(jpeg|png|jpg)|application\/pdf)$/.test(file.mimetype)) return callback(null, true);
+        callback(new Error('Only JPG, PNG, and PDF files are allowed.'));
+    }
+});
+
+function getSupabaseStorageConfig() {
+    const databaseHost = new URL(process.env.DATABASE_URL).username.split('.')[1];
+    const projectRef = process.env.SUPABASE_PROJECT_REF || databaseHost;
+    return {
+        url: (process.env.SUPABASE_URL || `https://${projectRef}.supabase.co`).replace(/\/$/, ''),
+        bucket: process.env.SUPABASE_STORAGE_BUCKET || 'voter-documents',
+        key: process.env.SUPABASE_SERVICE_ROLE_KEY
+    };
+}
 
 async function ensureVoterColumns() {
     await pool.query(`
@@ -28,7 +48,8 @@ async function ensureVoterColumns() {
         ADD COLUMN IF NOT EXISTS complete_address TEXT,
         ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(20),
         ADD COLUMN IF NOT EXISTS degree_certificate_url TEXT,
-        ADD COLUMN IF NOT EXISTS degree_certificate_urls TEXT[]
+        ADD COLUMN IF NOT EXISTS degree_certificate_urls TEXT[],
+        ADD COLUMN IF NOT EXISTS booth_number VARCHAR(30)
     `);
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
@@ -70,6 +91,37 @@ const requireRoles = (...roles) => (req, res, next) => {
     if (!roles.includes(req.user.role)) return res.status(403).json({ error: 'Insufficient permissions' });
     next();
 };
+
+app.post('/api/uploads', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), upload.array('files', 2), async (req, res) => {
+    if (!req.files?.length) return res.status(400).json({ error: 'Select at least one file to upload.' });
+    const storage = getSupabaseStorageConfig();
+    if (!storage.key) return res.status(500).json({ error: 'File storage is not configured on the server.' });
+
+    try {
+        await fetch(`${storage.url}/storage/v1/bucket`, {
+            method: 'POST',
+            headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: storage.bucket, name: storage.bucket, public: true })
+        });
+
+        const urls = [];
+        for (const file of req.files) {
+            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filePath = `${req.user.id}/${crypto.randomUUID()}-${safeName}`;
+            const response = await fetch(`${storage.url}/storage/v1/object/${storage.bucket}/${filePath.split('/').map(encodeURIComponent).join('/')}`, {
+                method: 'POST',
+                headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': file.mimetype, 'x-upsert': 'false' },
+                body: file.buffer
+            });
+            if (!response.ok) throw new Error(`Storage upload failed: ${await response.text()}`);
+            urls.push(`${storage.url}/storage/v1/object/public/${storage.bucket}/${filePath.split('/').map(encodeURIComponent).join('/')}`);
+        }
+        res.status(201).json({ urls });
+    } catch (error) {
+        console.error('Document upload failed:', error.message);
+        res.status(502).json({ error: 'Unable to store the uploaded documents.' });
+    }
+});
 
 app.get('/api/health', async (req, res) => {
     try {
@@ -139,9 +191,9 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
 app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), async (req, res) => {
     // Handling both sets of fields from the modified form
     const {
-        voter_id, voter_name, father_name, date_of_birth, mobile_number, email, gender, nationality, application_type,
+        voter_id, voter_name, father_name, date_of_birth, mobile_number, email, gender, nationality,
         degree_qualification, graduation_year, form18_number, acknowledgement_number, reference_number, region,
-        constituency, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, notes
+        constituency, booth_number, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, notes
     } = req.body;
     try {
         const isAllAccessAgent = req.user.role === 'constituency_coordinator' && (req.user.constituency === 'All' || req.user.region === 'All' || !req.user.constituency || !req.user.region);
@@ -152,7 +204,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             const coordinator = await pool.query('SELECT id FROM users WHERE id = $1 AND role = \'constituency_coordinator\'', [req.body.coordinator_id]);
             if (!coordinator.rowCount) return res.status(400).json({ error: 'Select a valid coordinator for this enrollment.' });
         }
-        if (!voter_id || !voter_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !degree_qualification || !graduation_year || !acknowledgement_number || !complete_address || !village || !district || !pincode) {
+        if (!voter_id || !voter_name || !father_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !degree_qualification || !graduation_year || !acknowledgement_number || !complete_address || !village || !district || !pincode || !booth_number) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
         }
         if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) return res.status(400).json({ error: 'Enter a valid personal email address.' });
@@ -177,19 +229,19 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         const newVoter = await pool.query(
             `INSERT INTO voters (
                 coordinator_id, voter_name, father_name, date_of_birth,
-                mobile_number, citizenship_status, constituency, mandal,
+                mobile_number, citizenship_status, constituency, booth_number, mandal,
                 village, degree_qualification, graduation_year, degree_certificate_url, degree_certificate_urls, enrollment_status,
-                voter_id, gender, email, nationality, application_type,
+                voter_id, gender, email, nationality,
                 form18_number, acknowledgement_number, reference_number, house_number, street,
                 complete_address, district, state, pincode, region, notes
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending',
-                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending',
+                $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
             RETURNING *`,
             [
                 req.body.coordinator_id || req.user.id, voter_name, father_name, date_of_birth,
-                mobile_number, true, constituency, mandal,
+                mobile_number, true, constituency, booth_number, mandal,
                 village, degree_qualification, graduation_year, documentUrls[0], documentUrls,
-                voter_id, gender, voterEmail, nationality, application_type,
+                voter_id, gender, voterEmail, nationality,
                 form18_number, acknowledgement_number, reference_number, house_number, street,
                 complete_address || [house_number, street].filter(Boolean).join(', '), district, state, pincode, region, notes
             ]
