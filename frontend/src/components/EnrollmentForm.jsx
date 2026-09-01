@@ -14,7 +14,7 @@ const getInitialFormState = (user) => ({
   region: user?.assigned_region && user.assigned_region !== 'All' ? user.assigned_region : '', constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', mandal: '', village: '',
   degree_qualification: '', graduation_year: '',
   form18_number: '', acknowledgement_number: '', reference_number: '', notes: '',
-  complete_address: '', district: '', state: 'Telangana', pincode: '', degree_certificate_url: ''
+  complete_address: '', district: '', state: 'Telangana', pincode: '', degree_certificate_url: '', degree_certificate_urls: []
 });
 
 export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
@@ -29,7 +29,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [submittedId, setSubmittedId] = useState(null);
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [regions, setRegions] = useState([]);
   const [assemblies, setAssemblies] = useState([]);
   const [mandals, setMandals] = useState([]);
@@ -118,11 +118,15 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   };
 
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      setFormData(current => ({ ...current, degree_certificate_url: `https://storage.mock.local/${selectedFile.name}` }));
+    const selectedFiles = Array.from(e.target.files || []);
+    if (selectedFiles.length > 2) {
+      setError('You can upload a maximum of two supporting documents.');
+      e.target.value = '';
+      return;
     }
+    setFiles(selectedFiles);
+    const documentUrls = selectedFiles.map(selectedFile => `https://storage.mock.local/${selectedFile.name}`);
+    setFormData(current => ({ ...current, degree_certificate_url: documentUrls[0] || '', degree_certificate_urls: documentUrls }));
   };
 
   const handleSubmit = async (e) => {
@@ -137,7 +141,10 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
       const birthYear = new Date(formData.date_of_birth).getFullYear();
       if (!Number.isNaN(birthYear) && Number(formData.graduation_year) - birthYear < 20) return setError('Invalid age');
     }
-    if (!formData.degree_certificate_url) return setError('Please upload the degree certificate.');
+    const documentUrls = formData.degree_certificate_urls?.length
+      ? formData.degree_certificate_urls
+      : (formData.degree_certificate_url ? [formData.degree_certificate_url] : []);
+    if (!documentUrls.length) return setError('Please upload at least one supporting document.');
     if (!formData.form18_number && !formData.acknowledgement_number && !formData.reference_number) return setError('Enter Form 18, acknowledgement, or reference number.');
 
     setLoading(true);
@@ -148,7 +155,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
       setFormData(initialFormState);
       localStorage.removeItem(`enrollment-draft-${user.id}`);
       setFieldErrors({});
-      setFile(null);
+      setFiles([]);
       onSubmitted?.();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to submit enrollment');
@@ -198,7 +205,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
           <div className="grid gap-3 sm:grid-cols-2"><Field label={<><span>State</span>{requiredStar}</>} name="state" value={formData.state} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.state} readOnly /><Field label={<><span>Pincode</span>{requiredStar}</>} name="pincode" value={formData.pincode} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.pincode} placeholder="6-digit pincode" /></div>
         </section>
 
-        <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Supporting document</h3><label className={labelClass}><span>Supporting document</span>{requiredStar}</label><div className="relative rounded-md border-2 border-dashed border-[#b6cbc3] bg-white p-5 text-center hover:bg-[#f2f8f4]"><input type="file" onChange={handleFileChange} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" accept=".pdf,.jpg,.jpeg,.png" /><UploadCloud className="mx-auto mb-2 text-[#1d6b5d]" size={24} /><span className="text-sm font-medium text-[#465b55]">{file ? file.name : 'Choose supporting document'}</span><p className="mt-1 text-xs text-[#849890]">Accepted file types: PDF, JPG, PNG</p></div></section>
+        <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Supporting documents</h3><label className={labelClass}><span>Supporting documents</span>{requiredStar}</label><div className="relative rounded-md border-2 border-dashed border-[#b6cbc3] bg-white p-5 text-center hover:bg-[#f2f8f4]"><input type="file" multiple onChange={handleFileChange} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" accept=".pdf,.jpg,.jpeg,.png" /><UploadCloud className="mx-auto mb-2 text-[#1d6b5d]" size={24} /><span className="text-sm font-medium text-[#465b55]">{files.length ? files.map(selectedFile => selectedFile.name).join(', ') : 'Choose up to two supporting documents'}</span><p className="mt-1 text-xs text-[#849890]">Select a maximum of 2 files. Accepted file types: PDF, JPG, PNG</p></div></section>
         <button type="submit" disabled={loading} className="w-full rounded-md bg-[#173b35] px-4 py-3 font-bold text-white shadow-sm transition hover:bg-[#28584e] disabled:opacity-60">{loading ? <span className="mx-auto block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : 'Submit enrollment'}</button>
       </form>
     </div>

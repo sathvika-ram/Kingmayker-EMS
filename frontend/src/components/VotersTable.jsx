@@ -40,14 +40,11 @@ export default function VotersTable({ voters, onUpdateStatus }) {
             <td className="p-4">
               <div className="text-gray-800">{voter.degree_qualification}</div>
               <div className="text-xs text-gray-500">Year: {voter.graduation_year}</div>
-              <a 
-                href={voter.degree_certificate_url} 
-                target="_blank" 
-                rel="noreferrer"
-                className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-xs mt-1 font-medium"
-              >
-                <FileText size={12} /> <span>View Proof</span>
-              </a>
+              {(voter.degree_certificate_urls?.length ? voter.degree_certificate_urls : [voter.degree_certificate_url]).filter(Boolean).map((url, index) => (
+                <a key={url} href={url} target="_blank" rel="noreferrer" className="mr-2 inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-xs mt-1 font-medium">
+                  <FileText size={12} /> <span>View Proof {index + 1}</span>
+                </a>
+              ))}
             </td>
             <td className="p-4">
               <div className="text-gray-800">{voter.coordinator_name || `ID: ${voter.coordinator_id}`}</div>

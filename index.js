@@ -27,7 +27,8 @@ async function ensureVoterColumns() {
         ADD COLUMN IF NOT EXISTS notes TEXT,
         ADD COLUMN IF NOT EXISTS complete_address TEXT,
         ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(20),
-        ADD COLUMN IF NOT EXISTS degree_certificate_url TEXT
+        ADD COLUMN IF NOT EXISTS degree_certificate_url TEXT,
+        ADD COLUMN IF NOT EXISTS degree_certificate_urls TEXT[]
     `);
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
@@ -140,7 +141,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
     const {
         voter_id, voter_name, father_name, date_of_birth, mobile_number, email, gender, nationality, application_type,
         degree_qualification, graduation_year, form18_number, acknowledgement_number, reference_number, region,
-        constituency, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, notes
+        constituency, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, notes
     } = req.body;
     try {
         const isAllAccessAgent = req.user.role === 'constituency_coordinator' && (req.user.constituency === 'All' || req.user.region === 'All' || !req.user.constituency || !req.user.region);
@@ -157,6 +158,12 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) return res.status(400).json({ error: 'Enter a valid personal email address.' });
         if (!/^\d{6}$/.test(String(pincode))) return res.status(400).json({ error: 'Check the pincode.' });
         if (Number(graduation_year) > 2023) return res.status(400).json({ error: 'Only graduates who passed out before November 2023 are eligible.' });
+        const submittedDocumentUrls = Array.isArray(req.body.degree_certificate_urls)
+            ? req.body.degree_certificate_urls.filter(Boolean)
+            : (degree_certificate_url ? [degree_certificate_url] : []);
+        if (submittedDocumentUrls.length > 2) return res.status(400).json({ error: 'You can upload a maximum of two supporting documents.' });
+        const documentUrls = submittedDocumentUrls;
+        if (!documentUrls.length) return res.status(400).json({ error: 'Please upload at least one supporting document.' });
 
         const dateOfBirth = new Date(date_of_birth);
         const ageAtGraduation = Number(graduation_year) - dateOfBirth.getFullYear();
@@ -171,17 +178,17 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             `INSERT INTO voters (
                 coordinator_id, voter_name, father_name, date_of_birth,
                 mobile_number, citizenship_status, constituency, mandal,
-                village, degree_qualification, graduation_year, degree_certificate_url, enrollment_status,
+                village, degree_qualification, graduation_year, degree_certificate_url, degree_certificate_urls, enrollment_status,
                 voter_id, gender, email, nationality, application_type,
                 form18_number, acknowledgement_number, reference_number, house_number, street,
                 complete_address, district, state, pincode, region, notes
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending',
-                $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending',
+                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
             RETURNING *`,
             [
                 req.body.coordinator_id || req.user.id, voter_name, father_name, date_of_birth,
                 mobile_number, true, constituency, mandal,
-                village, degree_qualification, graduation_year, degree_certificate_url,
+                village, degree_qualification, graduation_year, documentUrls[0], documentUrls,
                 voter_id, gender, voterEmail, nationality, application_type,
                 form18_number, acknowledgement_number, reference_number, house_number, street,
                 complete_address || [house_number, street].filter(Boolean).join(', '), district, state, pincode, region, notes
