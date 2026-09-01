@@ -41,6 +41,8 @@ The backend is built with Node.js and Express, connecting to a PostgreSQL databa
 
    The service-role key must be configured only on the backend or hosting provider, never in the frontend. The backend creates the `voter-documents` bucket as public on first upload if it does not already exist. Files are limited to two per enrollment and 10 MB per file.
 
+   For the deployed backend, open the Render service for `kingmayker-ems.onrender.com`, go to **Environment**, and add the same three variables there. Render does not read this local `.env` file. After saving the variables, select **Manual Deploy > Deploy latest commit** and wait for the service to finish deploying.
+
 ## Running the Frontend
 
 The frontend is built with React, Vite, and Tailwind CSS.

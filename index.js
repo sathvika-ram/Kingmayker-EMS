@@ -56,6 +56,7 @@ async function ensureVoterColumns() {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_mandal VARCHAR(120)');
     await pool.query('ALTER TABLE users ALTER COLUMN email DROP NOT NULL');
     await pool.query('ALTER TABLE voters ALTER COLUMN email DROP NOT NULL');
+    await pool.query('ALTER TABLE voters ALTER COLUMN application_type DROP NOT NULL');
 }
 
 function normalizeEmailPart(value) {
@@ -249,8 +250,8 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         res.status(201).json({ message: 'Enrolled', voter: newVoter.rows[0] });
             writeAudit(req.user.id, 'voter_enrolled', { voter_id: newVoter.rows[0].id, constituency, mandal });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error while processing voter enrollment' });
+        console.error('Voter enrollment failed:', err);
+        res.status(500).json({ error: 'Server error while processing voter enrollment', code: err.code || 'UNKNOWN' });
     }
 });
 
