@@ -14,6 +14,8 @@ A real-time graduate MLC election enrollment and management platform.
 
 The backend is built with Node.js and Express, connecting to a PostgreSQL database.
 
+For production, set `NODE_ENV=production`, a random `JWT_SECRET` of at least 32 characters, and use the Supabase Session Pooler connection string on port `6543` with `pgbouncer=true`. The backend refuses a direct Supabase database URI in production.
+
 1. Open a terminal.
 2. Navigate to the project root:
    ```bash
@@ -34,6 +36,10 @@ The backend is built with Node.js and Express, connecting to a PostgreSQL databa
    Supporting documents are uploaded to Supabase Storage, and their public URLs are saved in the `voters.degree_certificate_url` and `voters.degree_certificate_urls` columns. Configure these backend environment variables before using uploads:
 
    ```env
+   NODE_ENV=production
+   DATABASE_URL=postgresql://postgres.project-ref:password@pooler-host:6543/postgres?pgbouncer=true
+   JWT_SECRET=replace-with-a-random-secret-at-least-32-characters
+   FRONTEND_URL=https://your-vercel-domain.vercel.app
    SUPABASE_URL=https://your-project-ref.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
    SUPABASE_STORAGE_BUCKET=voter-documents

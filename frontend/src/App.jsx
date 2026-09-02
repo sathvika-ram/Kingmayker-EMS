@@ -15,6 +15,8 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   return children;
 };
 
+const NotFound = () => <div className="flex min-h-screen items-center justify-center p-6 text-center"><div><h1 className="text-3xl font-bold text-slate-900">Page not found</h1><p className="mt-2 text-sm text-slate-500">The requested page does not exist.</p><a className="mt-5 inline-block text-sm font-semibold text-teal-700" href="/">Return to workspace</a></div></div>;
+
 const DefaultRedirect = () => {
   const { user, loading } = useAuth();
   
@@ -59,7 +61,7 @@ function App() {
               </ProtectedRoute>
             } 
           />
-          <Route path="*" element={<DefaultRedirect />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

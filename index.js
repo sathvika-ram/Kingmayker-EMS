@@ -3,25 +3,48 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const multer = require('multer');
 require('dotenv').config();
 
 const app = express();
-app.use(express.json());
-app.use(cors());
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+const allowedOrigins = String(process.env.FRONTEND_URL || 'http://localhost:5173').split(',').map(origin => origin.trim()).filter(Boolean);
+app.use(cors({ origin: allowedOrigins }));
 
 // PostgreSQL Connection Pool Setup
+function getDatabaseConnectionString() {
+    const connectionString = String(process.env.DATABASE_URL || '').trim();
+    if (!connectionString) throw new Error('DATABASE_URL must be configured.');
+    const databaseUrl = new URL(connectionString);
+    const isSupabase = databaseUrl.hostname.includes('supabase.co') || databaseUrl.hostname.includes('supabase.com');
+    if (isSupabase && process.env.NODE_ENV === 'production' && (databaseUrl.port !== '6543' || databaseUrl.searchParams.get('pgbouncer') !== 'true')) {
+        throw new Error('Production Supabase DATABASE_URL must use the pooled connection on port 6543 with pgbouncer=true.');
+    }
+    return databaseUrl.toString();
+}
+
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: getDatabaseConnectionString(),
     ssl: { rejectUnauthorized: false },
-    max: 10,
-    connectionTimeoutMillis: 10000,
+    max: 20,
     idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
 });
 pool.on('error', error => console.error('PostgreSQL pool error:', error.message));
 
-const JWT_SECRET = process.env.JWT_SECRET || 'YOUR_SECRET_JWT_KEY';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) throw new Error('JWT_SECRET must be configured with at least 32 characters.');
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+});
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { files: 2, fileSize: 10 * 1024 * 1024 },
@@ -172,7 +195,7 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
     const { password } = req.body;
     try {
@@ -257,7 +280,9 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         constituency, booth_number, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, notes
     } = req.body;
     try {
-        const numericCoordinatorId = Number(req.body.coordinator_id ?? req.user.id);
+        const numericCoordinatorId = req.user.role === 'constituency_coordinator'
+            ? Number(req.user.id)
+            : Number(req.body.coordinator_id);
         if (!Number.isFinite(numericCoordinatorId) || numericCoordinatorId <= 0) {
             return res.status(400).json({ error: 'Invalid coordinator session. Please log in again.' });
         }
@@ -316,7 +341,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             writeAudit(req.user.id, 'voter_enrolled', { voter_id: newVoter.rows[0].id, constituency, mandal });
     } catch (err) {
         console.error('Voter enrollment failed:', err);
-        res.status(500).json({ error: 'Server error while processing voter enrollment', code: err.code || 'UNKNOWN' });
+        res.status(500).json({ error: 'Server error while processing voter enrollment' });
     }
 });
 

@@ -165,6 +165,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (loading) return;
     setError('');
     const nextErrors = Object.keys(formData).reduce((errors, name) => ({ ...errors, [name]: validateField(name, formData[name]) }), {});
     setFieldErrors(nextErrors);
@@ -181,6 +182,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     }
     if (!formData.form18_number && !formData.acknowledgement_number && !formData.reference_number) return setError('Enter Form 18, acknowledgement, or reference number.');
 
+    setLoading(true);
     setShowConfirmSubmit(true);
   };
 
@@ -210,8 +212,8 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
               Please make sure all details are correct before submitting. Check spellings, names, dates, constituency, and document information. The form fields are not editable after submission. If anything is wrong, click <strong>Go back</strong> and correct it first.
             </p>
             <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setShowConfirmSubmit(false)} className="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Go back</button>
-              <button type="button" onClick={submitEnrollment} className="rounded-md bg-[#173b35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#28584e]">Proceed</button>
+              <button type="button" onClick={() => { setShowConfirmSubmit(false); setLoading(false); }} className="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Go back</button>
+              <button type="button" onClick={submitEnrollment} disabled={loading === false} className="rounded-md bg-[#173b35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#28584e] disabled:cursor-not-allowed disabled:opacity-60">Proceed</button>
             </div>
           </div>
         </div>
@@ -240,7 +242,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
         </section>
 
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Supporting documents</h3><label className={labelClass}><span>Supporting documents</span>{requiredStar}</label><div className="relative rounded-md border-2 border-dashed border-[#b6cbc3] bg-white p-5 text-center hover:bg-[#f2f8f4]"><input type="file" multiple onChange={handleFileChange} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" accept=".pdf,.jpg,.jpeg,.png" /><UploadCloud className="mx-auto mb-2 text-[#1d6b5d]" size={24} /><span className="text-sm font-medium text-[#465b55]">{files.length ? files.map(selectedFile => selectedFile.name).join(', ') : 'Choose up to two supporting documents'}</span><p className="mt-1 text-xs text-[#849890]">Select a maximum of 2 files. Accepted file types: PDF, JPG, PNG</p></div></section>
-        <button type="submit" disabled={loading} className="w-full rounded-md bg-[#173b35] px-4 py-3 font-bold text-white shadow-sm transition hover:bg-[#28584e] disabled:opacity-60">{loading ? <span className="mx-auto block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : 'Submit enrollment'}</button>
+        <button type="submit" disabled={loading} aria-busy={loading} className="w-full rounded-md bg-[#173b35] px-4 py-3 font-bold text-white shadow-sm transition hover:bg-[#28584e] disabled:cursor-not-allowed disabled:opacity-60">{loading ? <span className="mx-auto block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" aria-label="Submitting enrollment" /> : 'Submit enrollment'}</button>
       </form>
     </div>
   );

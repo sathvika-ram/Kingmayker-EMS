@@ -20,9 +20,18 @@ export const AuthProvider = ({ children }) => {
     const assigned_mandal = localStorage.getItem('assigned_mandal');
     const id = localStorage.getItem('id');
 
-    if (token && role) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      setUser({ token, role, name, assigned_region, assigned_constituency, assigned_mandal, id });
+    try {
+      const decoded = token ? jwtDecode(token) : null;
+      if (token && role && decoded?.exp && decoded.exp * 1000 > Date.now()) {
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        setUser({ token, role, name, assigned_region, assigned_constituency, assigned_mandal, id });
+      } else {
+        localStorage.removeItem('token');
+        delete axios.defaults.headers.common['Authorization'];
+      }
+    } catch {
+      localStorage.removeItem('token');
+      delete axios.defaults.headers.common['Authorization'];
     }
     setLoading(false);
   }, []);
@@ -48,7 +57,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.clear();
+    ['token', 'role', 'name', 'assigned_constituency', 'assigned_region', 'assigned_mandal', 'id'].forEach(key => localStorage.removeItem(key));
     delete axios.defaults.headers.common['Authorization'];
     setUser(null);
   };
