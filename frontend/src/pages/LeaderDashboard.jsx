@@ -80,7 +80,19 @@ export default function LeaderDashboard() {
   const exportData = () => {
     const workbook = XLSX.utils.book_new();
     const geography = [region, constituency, mandal].filter(Boolean).join('-') || 'all-regions';
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(voters), 'Selected Geography');
+    const filteredRows = voters.map(row => {
+      const next = { ...row };
+      delete next.degree_certificate_url;
+      delete next.degree_certificate_urls;
+      delete next.application_type;
+      delete next.form18_number;
+      delete next.reference_number;
+      delete next.created_at;
+      delete next.updated_at;
+      delete next.whatsapp_number;
+      return next;
+    });
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(filteredRows), 'Selected Geography');
     XLSX.writeFile(workbook, `kingmayker-${geography.toLowerCase().replace(/\s+/g, '-')}.xlsx`);
   };
 

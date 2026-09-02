@@ -10,7 +10,8 @@ export default function CoordinatorModal({ onClose }) {
     temp_password: '',
     assigned_region: '',
     assigned_constituency: '',
-    assigned_mandal: ''
+    assigned_mandal: '',
+    agent_personal_email: ''
   });
   const [constituencies, setConstituencies] = useState([]);
   const [mandals, setMandals] = useState([]);
@@ -45,18 +46,30 @@ export default function CoordinatorModal({ onClose }) {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    const generatedLoginEmail = getLoginEmail(formData.name, formData.assigned_constituency);
+    if (!formData.name || !formData.mobile_number || !formData.temp_password || !formData.assigned_constituency || !generatedLoginEmail) {
+      setError('Full name, mobile number, temporary password, assigned constituency, and generated login email are required.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API}/admin/create-coordinator`, formData);
+      const response = await axios.post(`${API}/admin/create-coordinator`, {
+        ...formData,
+        generated_login_email: generatedLoginEmail
+      });
       setSuccess(response.data.message);
-      setFormData({ name: '', mobile_number: '', temp_password: '', assigned_region: '', assigned_constituency: '', assigned_mandal: '' });
+      setFormData({ name: '', mobile_number: '', temp_password: '', assigned_region: '', assigned_constituency: '', assigned_mandal: '', agent_personal_email: '' });
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create account');
     } finally {
       setLoading(false);
     }
   };
+
+  const generatedLoginEmail = getLoginEmail(formData.name, formData.assigned_constituency);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -74,33 +87,33 @@ export default function CoordinatorModal({ onClose }) {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name <span className="text-red-500">*</span></label>
               <input type="text" name="name" required value={formData.name} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500" placeholder="e.g. Ramesh Kumar" />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Personal email</label>
-              <input type="text" readOnly value={getLoginEmail(formData.name, formData.assigned_constituency)} className="w-full px-3 py-2 border rounded-md text-sm bg-gray-50 text-gray-500" placeholder="Generated from name and assigned area" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Generated login email <span className="text-red-500">*</span></label>
+              <input type="email" readOnly required value={generatedLoginEmail} className="w-full px-3 py-2 border rounded-md text-sm bg-gray-50 text-gray-500" placeholder="Select the constituency first" />
               <p className="mt-1 text-xs text-gray-500">This is the coordinator's login email and is generated automatically.</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned region</label>
-              <input readOnly value={formData.assigned_region} className="w-full px-3 py-2 border rounded-md text-sm bg-gray-50 text-gray-500" placeholder="Selected from constituency" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned region <span className="text-red-500">*</span></label>
+              <input readOnly value={formData.assigned_region} className="w-full px-3 py-2 border rounded-md text-sm bg-gray-50 text-gray-500" placeholder="Select the constituency first" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Mobile number</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mobile number <span className="text-red-500">*</span></label>
               <input type="tel" name="mobile_number" required pattern="[0-9]{10}" value={formData.mobile_number} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500" placeholder="10-digit mobile number" />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password <span className="text-red-500">*</span></label>
               <input type="text" name="temp_password" required value={formData.temp_password} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500" placeholder="e.g. Temp@123" />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Constituency</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Constituency <span className="text-red-500">*</span></label>
               <select name="assigned_constituency" required value={formData.assigned_constituency} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500">
                 <option value="">Select constituency</option>
                 {constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency} ({item.region})</option>)}
@@ -108,8 +121,13 @@ export default function CoordinatorModal({ onClose }) {
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Agent personal email ID</label>
+              <input type="email" name="agent_personal_email" value={formData.agent_personal_email} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500" placeholder="agent@example.com" />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Mandal</label>
-              <select name="assigned_mandal" required value={formData.assigned_mandal} onChange={handleChange} disabled={!formData.assigned_constituency} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500">
+              <select name="assigned_mandal" value={formData.assigned_mandal} onChange={handleChange} disabled={!formData.assigned_constituency} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500">
                 <option value="">Select mandal</option>
                 {mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}
               </select>

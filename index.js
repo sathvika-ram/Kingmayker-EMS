@@ -95,6 +95,8 @@ async function ensureVoterColumns() {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_mandal VARCHAR(120)');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_email VARCHAR(255)');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS agent_personal_email VARCHAR(255)');
     await pool.query('ALTER TABLE users ALTER COLUMN email DROP NOT NULL');
     await pool.query('ALTER TABLE voters ALTER COLUMN email DROP NOT NULL');
     await pool.query('ALTER TABLE voters ALTER COLUMN application_type DROP NOT NULL');
@@ -199,29 +201,50 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super_admin'), async (req, res) => {
-    const { name, mobile_number, temp_password, assigned_region, assigned_constituency, assigned_mandal } = req.body;
+    const { name, mobile_number, temp_password, assigned_region, assigned_constituency, assigned_mandal, agent_personal_email, personal_email, generated_login_email } = req.body;
     try {
         const normalizedName = String(name || '').trim();
-        if (!normalizedName || !/^\d{10}$/.test(String(mobile_number || '')) || !temp_password || !assigned_region || !assigned_constituency || !assigned_mandal) {
-            return res.status(400).json({ error: 'Name, 10-digit mobile, password, region, constituency, and mandal are required.' });
+        const selectedRegion = String(assigned_region || '').trim();
+        const selectedConstituency = String(assigned_constituency || '').trim();
+        const selectedMandal = String(assigned_mandal || '').trim();
+        const personalEmail = String(agent_personal_email || personal_email || '').trim();
+
+        if (!normalizedName || !/^\d{10}$/.test(String(mobile_number || '')) || !temp_password || !selectedConstituency) {
+            return res.status(400).json({ error: 'Full name, 10-digit mobile, password, and constituency are required.' });
         }
-        const geography = await pool.query(
-            'SELECT 1 FROM master_geography WHERE "Old District" = $1 AND "Assembly Constituency" = $2 AND "Mandal" = $3 LIMIT 1',
-            [assigned_region, assigned_constituency, assigned_mandal]
-        );
-        if (!geography.rowCount) return res.status(400).json({ error: 'The selected region, constituency, and mandal do not match.' });
-        const coordinatorEmail = buildCoordinatorEmail(normalizedName, assigned_constituency);
+
+        const regionLookup = selectedRegion || (await pool.query('SELECT "Old District" FROM master_geography WHERE "Assembly Constituency" = $1 LIMIT 1', [selectedConstituency])).rows[0]?.['Old District'];
+        const resolvedRegion = String(regionLookup || '').trim();
+        if (!resolvedRegion) return res.status(400).json({ error: 'Please select a valid constituency so the region can be auto-generated.' });
+
+        if (selectedMandal) {
+            const geography = await pool.query(
+                'SELECT 1 FROM master_geography WHERE "Old District" = $1 AND "Assembly Constituency" = $2 AND "Mandal" = $3 LIMIT 1',
+                [resolvedRegion, selectedConstituency, selectedMandal]
+            );
+            if (!geography.rowCount) return res.status(400).json({ error: 'The selected region, constituency, and mandal do not match.' });
+        }
+
+        const coordinatorEmail = String(generated_login_email || buildCoordinatorEmail(normalizedName, selectedConstituency)).trim();
+        if (!coordinatorEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(coordinatorEmail)) {
+            return res.status(400).json({ error: 'A valid generated login email is required.' });
+        }
+        if (personalEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(personalEmail)) {
+            return res.status(400).json({ error: 'Enter a valid personal email address for the agent.' });
+        }
+
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(temp_password, salt);
-            const newCoordinator = await pool.query(
-                `INSERT INTO users (name, email, mobile_number, password_hash, role, assigned_region, assigned_constituency, assigned_mandal) 
-                 VALUES ($1, $2, $3, $4, 'constituency_coordinator', $5, $6, $7) RETURNING id, name, email, mobile_number, assigned_region, assigned_constituency, assigned_mandal`,
-                [normalizedName, coordinatorEmail, mobile_number, passwordHash, assigned_region, assigned_constituency, assigned_mandal]
+        const newCoordinator = await pool.query(
+            `INSERT INTO users (name, email, mobile_number, password_hash, role, assigned_region, assigned_constituency, assigned_mandal, personal_email, agent_personal_email) 
+             VALUES ($1, $2, $3, $4, 'constituency_coordinator', $5, $6, $7, $8, $9) RETURNING id, name, email, mobile_number, assigned_region, assigned_constituency, assigned_mandal, personal_email, agent_personal_email`,
+            [normalizedName, coordinatorEmail, mobile_number, passwordHash, resolvedRegion, selectedConstituency, selectedMandal || null, personalEmail || null, personalEmail || null]
         );
-            writeAudit(req.user?.id, 'coordinator_created', { coordinator_id: newCoordinator.rows[0].id, assigned_constituency, assigned_mandal });
+        writeAudit(req.user?.id, 'coordinator_created', { coordinator_id: newCoordinator.rows[0].id, assigned_constituency: selectedConstituency, assigned_mandal: selectedMandal });
         res.status(201).json({ message: `Coordinator created. Login email: ${coordinatorEmail}`, coordinator: newCoordinator.rows[0] });
     } catch (err) {
         if (err.code === '23505') return res.status(409).json({ error: 'A coordinator already uses this generated login email.' });
+        console.error('Coordinator creation failed:', err);
         res.status(500).json({ error: 'Failed to create coordinator' });
     }
 });
