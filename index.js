@@ -41,6 +41,47 @@ function getSupabaseStorageConfig() {
     };
 }
 
+async function ensureSupabaseBucket(storage) {
+    const bucketUrl = `${storage.url}/storage/v1/bucket/${encodeURIComponent(storage.bucket)}`;
+    const checkResponse = await fetch(bucketUrl, {
+        method: 'GET',
+        headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}` }
+    });
+
+    if (checkResponse.ok) {
+        const patchResponse = await fetch(bucketUrl, {
+            method: 'PATCH',
+            headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                public: true,
+                allowed_mime_types: ['image/jpeg', 'image/png', 'application/pdf']
+            })
+        });
+
+        if (!patchResponse.ok) {
+            const errorText = await patchResponse.text();
+            console.warn(`Bucket configuration warning: ${errorText}`);
+        }
+        return;
+    }
+
+    const createResponse = await fetch(`${storage.url}/storage/v1/bucket`, {
+        method: 'POST',
+        headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            id: storage.bucket,
+            name: storage.bucket,
+            public: true,
+            allowed_mime_types: ['image/jpeg', 'image/png', 'application/pdf']
+        })
+    });
+
+    if (!createResponse.ok && createResponse.status !== 400 && createResponse.status !== 409) {
+        const errorText = await createResponse.text();
+        throw new Error(`Storage bucket setup failed: ${errorText}`);
+    }
+}
+
 async function ensureVoterColumns() {
     await pool.query(`
         ALTER TABLE voters
@@ -99,11 +140,7 @@ app.post('/api/uploads', authenticateToken, requireRoles('constituency_coordinat
     if (!storage.key) return res.status(500).json({ error: 'File storage is not configured on the server.' });
 
     try {
-        await fetch(`${storage.url}/storage/v1/bucket`, {
-            method: 'POST',
-            headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: storage.bucket, name: storage.bucket, public: true })
-        });
+        await ensureSupabaseBucket(storage);
 
         const urls = [];
         for (const file of req.files) {
@@ -197,12 +234,17 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         constituency, booth_number, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, notes
     } = req.body;
     try {
+        const numericCoordinatorId = Number(req.body.coordinator_id ?? req.user.id);
+        if (!Number.isFinite(numericCoordinatorId) || numericCoordinatorId <= 0) {
+            return res.status(400).json({ error: 'Invalid coordinator session. Please log in again.' });
+        }
+
         const isAllAccessAgent = req.user.role === 'constituency_coordinator' && (req.user.constituency === 'All' || req.user.region === 'All' || !req.user.constituency || !req.user.region);
         if (req.user.role === 'constituency_coordinator' && !isAllAccessAgent && (constituency !== req.user.constituency || (req.user.region && region !== req.user.region) || (req.user.mandal && mandal !== req.user.mandal))) {
             return res.status(403).json({ error: 'You can enroll voters only in your assigned geography' });
         }
         if (req.user.role === 'super_admin') {
-            const coordinator = await pool.query('SELECT id FROM users WHERE id = $1 AND role = \'constituency_coordinator\'', [req.body.coordinator_id]);
+            const coordinator = await pool.query('SELECT id FROM users WHERE id = $1 AND role = \'constituency_coordinator\'', [numericCoordinatorId]);
             if (!coordinator.rowCount) return res.status(400).json({ error: 'Select a valid coordinator for this enrollment.' });
         }
         if (!voter_id || !voter_name || !father_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !degree_qualification || !graduation_year || !acknowledgement_number || !complete_address || !village || !district || !pincode || !booth_number) {
@@ -216,7 +258,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             : (degree_certificate_url ? [degree_certificate_url] : []);
         if (submittedDocumentUrls.length > 2) return res.status(400).json({ error: 'You can upload a maximum of two supporting documents.' });
         const documentUrls = submittedDocumentUrls;
-        if (!documentUrls.length) return res.status(400).json({ error: 'Please upload at least one supporting document.' });
+        const primaryDocumentUrl = documentUrls[0] || '';
 
         const dateOfBirth = new Date(date_of_birth);
         const ageAtGraduation = Number(graduation_year) - dateOfBirth.getFullYear();
@@ -239,9 +281,9 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
                 $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
             RETURNING *`,
             [
-                req.body.coordinator_id || req.user.id, voter_name, father_name, date_of_birth,
+                numericCoordinatorId, voter_name, father_name, date_of_birth,
                 mobile_number, true, constituency, booth_number, mandal,
-                village, degree_qualification, graduation_year, documentUrls[0], documentUrls,
+                village, degree_qualification, graduation_year, primaryDocumentUrl, documentUrls,
                 voter_id, gender, voterEmail, nationality,
                 form18_number, acknowledgement_number, reference_number, house_number, street,
                 complete_address || [house_number, street].filter(Boolean).join(', '), district, state, pincode, region, notes

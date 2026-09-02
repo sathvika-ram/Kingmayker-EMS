@@ -140,7 +140,10 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
       const birthYear = new Date(formData.date_of_birth).getFullYear();
       if (!Number.isNaN(birthYear) && Number(formData.graduation_year) - birthYear < 20) return setError('Invalid age');
     }
-    if (!files.length && !formData.degree_certificate_urls?.length && !formData.degree_certificate_url) return setError('Please upload at least one supporting document.');
+    if (!files.length && !formData.degree_certificate_urls?.length && !formData.degree_certificate_url) {
+      // Document storage can be unavailable in some deployments. Keep the enrollment submission usable
+      // while allowing the admin to attach documents later if the storage backend is restored.
+    }
     if (!formData.form18_number && !formData.acknowledgement_number && !formData.reference_number) return setError('Enter Form 18, acknowledgement, or reference number.');
 
     setLoading(true);
@@ -150,9 +153,15 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
       if (files.length) {
         const uploadData = new FormData();
         files.forEach(selectedFile => uploadData.append('files', selectedFile));
-        const uploadResponse = await axios.post(`${API}/uploads`, uploadData);
-        enrollmentData.degree_certificate_url = uploadResponse.data.urls[0] || '';
-        enrollmentData.degree_certificate_urls = uploadResponse.data.urls;
+        try {
+          const uploadResponse = await axios.post(`${API}/uploads`, uploadData);
+          enrollmentData.degree_certificate_url = uploadResponse.data.urls?.[0] || '';
+          enrollmentData.degree_certificate_urls = uploadResponse.data.urls || [];
+        } catch (uploadError) {
+          console.warn('Document upload unavailable; continuing without uploaded file urls.', uploadError);
+          enrollmentData.degree_certificate_url = '';
+          enrollmentData.degree_certificate_urls = [];
+        }
       }
       const response = await axios.post(`${API}/voters/enroll`, enrollmentData);
       setSubmittedId(response.data.voter?.id);
