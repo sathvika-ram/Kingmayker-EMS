@@ -236,7 +236,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
                 form18_number, acknowledgement_number, reference_number, house_number, street,
                 complete_address, district, state, pincode, region, notes
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending',
-                $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
+                $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
             RETURNING *`,
             [
                 req.body.coordinator_id || req.user.id, voter_name, father_name, date_of_birth,
