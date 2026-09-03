@@ -34,7 +34,6 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   const [assemblies, setAssemblies] = useState([]);
   const [mandals, setMandals] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
 
   useEffect(() => {
     if (user?.id) localStorage.setItem(`enrollment-draft-${user.id}`, JSON.stringify(formData));
@@ -130,7 +129,6 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   };
 
   const submitEnrollment = async () => {
-    setShowConfirmSubmit(false);
     setLoading(true);
     try {
       const enrollmentData = { ...formData, coordinator_id: coordinatorId || user.id };
@@ -182,8 +180,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     }
     if (!formData.form18_number && !formData.acknowledgement_number && !formData.reference_number) return setError('Enter Form 18, acknowledgement, or reference number.');
 
-    setLoading(true);
-    setShowConfirmSubmit(true);
+    submitEnrollment();
   };
 
   if (success) return (
@@ -203,21 +200,6 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
         <p className="mt-1 text-sm text-[#64736f]">Enter the voter details carefully. Fields marked <span className="text-red-600">*</span> are required.</p>
       </div>
       {error && <div className="mb-4 rounded-md border border-[#f0c8c2] bg-[#fff3f1] p-3 text-sm text-[#a84b43]">{error}</div>}
-
-      {showConfirmSubmit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
-            <h3 className="text-lg font-bold text-slate-900">Confirm enrollment details</h3>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Please make sure all details are correct before submitting. Check spellings, names, dates, constituency, and document information. The form fields are not editable after submission. If anything is wrong, click <strong>Go back</strong> and correct it first.
-            </p>
-            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => { setShowConfirmSubmit(false); setLoading(false); }} className="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Go back</button>
-              <button type="button" onClick={submitEnrollment} disabled={loading === false} className="rounded-md bg-[#173b35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#28584e] disabled:cursor-not-allowed disabled:opacity-60">Proceed</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-4 pb-8">
         <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold uppercase tracking-wider text-[#52736a]">Personal details</h3>

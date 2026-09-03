@@ -61,6 +61,7 @@ const upload = multer({
         callback(new Error('Only JPG, PNG, and PDF files are allowed.'));
     }
 });
+const storageRequestTimeout = 15000;
 
 function getSupabaseStorageConfig() {
     const databaseHost = new URL(process.env.DATABASE_URL).username.split('.')[1];
@@ -76,7 +77,8 @@ async function ensureSupabaseBucket(storage) {
     const bucketUrl = `${storage.url}/storage/v1/bucket/${encodeURIComponent(storage.bucket)}`;
     const checkResponse = await fetch(bucketUrl, {
         method: 'GET',
-        headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}` }
+        headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}` },
+        signal: AbortSignal.timeout(storageRequestTimeout)
     });
 
     if (checkResponse.ok) {
@@ -86,7 +88,8 @@ async function ensureSupabaseBucket(storage) {
             body: JSON.stringify({
                 public: true,
                 allowed_mime_types: ['image/jpeg', 'image/png', 'application/pdf']
-            })
+            }),
+            signal: AbortSignal.timeout(storageRequestTimeout)
         });
 
         if (!patchResponse.ok) {
@@ -104,7 +107,8 @@ async function ensureSupabaseBucket(storage) {
             name: storage.bucket,
             public: true,
             allowed_mime_types: ['image/jpeg', 'image/png', 'application/pdf']
-        })
+        }),
+        signal: AbortSignal.timeout(storageRequestTimeout)
     });
 
     if (!createResponse.ok && createResponse.status !== 400 && createResponse.status !== 409) {
@@ -182,7 +186,8 @@ app.post('/api/uploads', authenticateToken, requireRoles('constituency_coordinat
             const response = await fetch(`${storage.url}/storage/v1/object/${storage.bucket}/${filePath.split('/').map(encodeURIComponent).join('/')}`, {
                 method: 'POST',
                 headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': file.mimetype, 'x-upsert': 'false' },
-                body: file.buffer
+                body: file.buffer,
+                signal: AbortSignal.timeout(storageRequestTimeout)
             });
             if (!response.ok) throw new Error(`Storage upload failed: ${await response.text()}`);
             urls.push(`${storage.url}/storage/v1/object/public/${storage.bucket}/${filePath.split('/').map(encodeURIComponent).join('/')}`);
