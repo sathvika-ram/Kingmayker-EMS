@@ -636,6 +636,15 @@ button.bg-\[\#173b35\].text-white { color: #ffffff !important; }
   background: rgba(255, 255, 255, 0.06);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16), 0 8px 20px rgba(20, 31, 28, 0.08);
 }
+.coordinator-assignment {
+  margin: 3px 0 0;
+  color: #64736f;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
 .coordinator-brand {
   color: var(--ink);
   font-size: 0.78rem;

@@ -15,7 +15,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 const allowedOrigins = Array.from(new Set([
     'http://localhost:5173',
     'http://127.0.0.1:5173',
-    ...String(process.env.FRONTEND_URL || '').split(',').map(origin => origin.trim()).filter(Boolean)
+    'https://kingmayker-ems-ten.vercel.app',
+    ...String(process.env.FRONTEND_URL || '')
+        .split(',')
+        .map(origin => origin.trim().replace(/\/$/, ''))
+        .filter(Boolean)
 ]));
 app.use(cors({ origin: allowedOrigins }));
 

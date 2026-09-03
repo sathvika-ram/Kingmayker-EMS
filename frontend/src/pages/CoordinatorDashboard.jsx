@@ -26,7 +26,9 @@ export default function CoordinatorDashboard() {
               <p className="app-brand-text app-brand-desktop">KINGMAYKER EMS</p>
               <p className="app-brand-text app-brand-mobile">EMS</p>
             </div>
-            <p className="text-[10px] font-semibold text-gray-500 sm:hidden">{user?.assigned_constituency || 'Constituency'} Constituency</p>
+            {user?.assigned_constituency && user.assigned_constituency !== 'All' && (
+              <p className="coordinator-assignment">{user.assigned_constituency.replace(/\s*\([^)]*\)/g, '')} </p>
+            )}
             <h1 className="dashboard-page-title agent-page-title hidden sm:block">AGENT OVERVIEW</h1>
           </div>
         </div>
