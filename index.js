@@ -12,7 +12,11 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-const allowedOrigins = String(process.env.FRONTEND_URL || 'http://localhost:5173').split(',').map(origin => origin.trim()).filter(Boolean);
+const allowedOrigins = Array.from(new Set([
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    ...String(process.env.FRONTEND_URL || '').split(',').map(origin => origin.trim()).filter(Boolean)
+]));
 app.use(cors({ origin: allowedOrigins }));
 
 // PostgreSQL Connection Pool Setup
