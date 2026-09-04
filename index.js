@@ -125,7 +125,11 @@ async function ensureVoterColumns() {
         ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(20),
         ADD COLUMN IF NOT EXISTS degree_certificate_url TEXT,
         ADD COLUMN IF NOT EXISTS degree_certificate_urls TEXT[],
-        ADD COLUMN IF NOT EXISTS booth_number VARCHAR(30)
+        ADD COLUMN IF NOT EXISTS booth_number VARCHAR(30),
+        ADD COLUMN IF NOT EXISTS form18_number VARCHAR(120),
+        ADD COLUMN IF NOT EXISTS reference_number VARCHAR(120),
+        ADD COLUMN IF NOT EXISTS house_number VARCHAR(120),
+        ADD COLUMN IF NOT EXISTS street VARCHAR(255)
     `);
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
