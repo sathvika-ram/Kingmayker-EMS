@@ -7,17 +7,24 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total_pages: 1 });
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     fetchHistory();
     const interval = setInterval(fetchHistory, 10000);
     return () => clearInterval(interval);
-  }, [search]);
+  }, [search, page]);
+
+  useEffect(() => { setPage(1); }, [search]);
 
   const fetchHistory = async () => {
     try {
-      const res = await axios.get(`${API}/coordinator/history`, { params: { search } });
+      const res = await axios.get(`${API}/coordinator/history`, { params: { search, page, limit: 50 } });
       setHistory(res.data.voters || []);
+      setPagination(res.data.pagination || {});
+      setTotalCount(Number(res.data.total_count || 0));
     } catch (err) {
       setError('Failed to load history');
     } finally {
@@ -49,11 +56,11 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
   }
 
   const visibleHistory = history.filter(voter => !statusOnly || ['pending', 'in_progress'].includes(voter.enrollment_status));
-  const emptyMessage = statusOnly ? 'No pending requests' : search ? 'No enrollment found for this Voter ID' : 'No enrollments submitted yet.';
+  const emptyMessage = statusOnly ? 'No pending requests' : search ? 'No enrollment found for this Voter ID or acknowledgement number' : 'No enrollments submitted yet.';
 
   return (
     <div className="p-4">
-      <h2 className="text-xl font-bold text-gray-800 mb-4">Submission History</h2>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold text-gray-800">Submission History</h2><div className="rounded-md bg-[#eef8f0] px-3 py-2 text-sm font-bold text-[#1d6b5d]">Total enrollments: {totalCount.toLocaleString()}</div></div>
       {error && <div className="text-red-500 mb-4">{error}</div>}
       
       {visibleHistory.length === 0 ? (
@@ -97,6 +104,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
               </div>
             </div>
           ))}
+          <div className="flex items-center justify-end gap-2 py-3 text-xs font-semibold text-gray-500"><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border border-gray-300 bg-white px-3 py-1.5 disabled:opacity-40">Previous</button><span>Page {page} of {Math.max(pagination.total_pages || 1, 1)}</span><button type="button" disabled={page >= (pagination.total_pages || 1)} onClick={() => setPage(page + 1)} className="rounded border border-gray-300 bg-white px-3 py-1.5 disabled:opacity-40">Next</button></div>
         </div>
       )}
     </div>

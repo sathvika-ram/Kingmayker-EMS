@@ -32,7 +32,7 @@ export default function CoordinatorDashboard() {
             <h1 className="dashboard-page-title agent-page-title hidden sm:block">AGENT OVERVIEW</h1>
           </div>
         </div>
-        <div className="coordinator-search"><Search size={16} /><input value={search} onChange={handleSearch} placeholder="Search by Voter ID" aria-label="Search by Voter ID" /></div>
+        <div className="coordinator-search"><Search size={16} /><input value={search} onChange={handleSearch} placeholder="Search Voter ID or acknowledgement number" aria-label="Search Voter ID or acknowledgement number" /></div>
         <button onClick={logout} title="Sign out" aria-label="Sign out" className="p-2 text-gray-500 hover:bg-green-50 rounded-lg transition-colors">
           <LogOut size={20} />
         </button>

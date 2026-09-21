@@ -86,7 +86,7 @@ async function ensureSupabaseBucket(storage) {
             method: 'PATCH',
             headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                public: true,
+                public: false,
                 allowed_mime_types: ['image/jpeg', 'image/png', 'application/pdf']
             }),
             signal: AbortSignal.timeout(storageRequestTimeout)
@@ -128,6 +128,7 @@ async function ensureVoterColumns() {
         ADD COLUMN IF NOT EXISTS booth_number VARCHAR(30),
         ADD COLUMN IF NOT EXISTS form18_number VARCHAR(120),
         ADD COLUMN IF NOT EXISTS reference_number VARCHAR(120),
+        ADD COLUMN IF NOT EXISTS submission_key VARCHAR(120),
         ADD COLUMN IF NOT EXISTS house_number VARCHAR(120),
         ADD COLUMN IF NOT EXISTS street VARCHAR(255)
     `);
@@ -139,6 +140,81 @@ async function ensureVoterColumns() {
     await pool.query('ALTER TABLE users ALTER COLUMN email DROP NOT NULL');
     await pool.query('ALTER TABLE voters ALTER COLUMN email DROP NOT NULL');
     await pool.query('ALTER TABLE voters ALTER COLUMN application_type DROP NOT NULL');
+    const indexStatements = [
+        'CREATE INDEX IF NOT EXISTS voters_voter_id_idx ON voters (voter_id)',
+        'CREATE INDEX IF NOT EXISTS voters_coordinator_id_idx ON voters (coordinator_id)',
+        'CREATE INDEX IF NOT EXISTS voters_region_idx ON voters (region)',
+        'CREATE INDEX IF NOT EXISTS voters_constituency_idx ON voters (constituency)',
+        'CREATE INDEX IF NOT EXISTS voters_mandal_idx ON voters (mandal)',
+        'CREATE INDEX IF NOT EXISTS voters_enrollment_status_idx ON voters (enrollment_status)',
+        'CREATE INDEX IF NOT EXISTS voters_created_at_idx ON voters (created_at DESC)',
+        'CREATE INDEX IF NOT EXISTS voters_search_idx ON voters USING gin (voter_name gin_trgm_ops)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS voters_submission_key_unique_idx ON voters (submission_key) WHERE submission_key IS NOT NULL AND submission_key <> \'\'',
+        'CREATE UNIQUE INDEX IF NOT EXISTS voters_voter_id_unique_idx ON voters (voter_id) WHERE voter_id IS NOT NULL AND voter_id <> \'\'',
+        'CREATE UNIQUE INDEX IF NOT EXISTS voters_acknowledgement_unique_idx ON voters (acknowledgement_number) WHERE acknowledgement_number IS NOT NULL AND acknowledgement_number <> \'\'',
+        'CREATE UNIQUE INDEX IF NOT EXISTS voters_reference_unique_idx ON voters (reference_number) WHERE reference_number IS NOT NULL AND reference_number <> \'\''
+    ];
+    await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+    for (const statement of indexStatements) {
+        try {
+            await pool.query(statement);
+        } catch (error) {
+            if (statement.includes('UNIQUE')) {
+                console.warn(`Unique index skipped; resolve existing duplicates before retrying: ${error.message}`);
+            } else {
+                throw error;
+            }
+        }
+    }
+}
+
+const safeVoterColumns = `
+    v.id, v.coordinator_id, v.voter_name, v.father_name, v.date_of_birth,
+    v.mobile_number, v.citizenship_status, v.constituency, v.booth_number,
+    v.mandal, v.village, v.degree_qualification, v.graduation_year,
+    v.enrollment_status, v.voter_id, v.gender, v.email, v.nationality,
+    v.form18_number, v.acknowledgement_number, v.reference_number,
+    v.house_number, v.street, v.complete_address, v.district, v.state,
+    v.pincode, v.region, v.notes, v.created_at, v.updated_at,
+    u.name AS coordinator_name`;
+
+function getPagination(query) {
+    const page = Math.max(Number.parseInt(query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(Number.parseInt(query.limit, 10) || 50, 1), 100);
+    let cursor = null;
+    if (query.cursor) {
+        try {
+            cursor = JSON.parse(Buffer.from(String(query.cursor), 'base64url').toString('utf8'));
+            if (!cursor.created_at || !cursor.id) cursor = null;
+        } catch {
+            cursor = null;
+        }
+    }
+    return { page, limit, cursor };
+}
+
+function encodeCursor(row) {
+    if (!row?.created_at || !row?.id) return null;
+    return Buffer.from(JSON.stringify({ created_at: row.created_at, id: row.id })).toString('base64url');
+}
+
+function addVoterFilters(query, params, filters) {
+    const add = (condition, value) => {
+        if (value) {
+            params.push(value);
+            query += ` AND ${condition} = $${params.length}`;
+        }
+    };
+    add('v.region', filters.region);
+    add('v.constituency', filters.constituency);
+    add('v.mandal', filters.mandal);
+    add('v.enrollment_status', filters.status);
+    if (filters.search) {
+        params.push(`%${String(filters.search).trim()}%`);
+        const parameter = `$${params.length}`;
+        query += ` AND (v.voter_name ILIKE ${parameter} OR v.voter_id ILIKE ${parameter} OR v.acknowledgement_number ILIKE ${parameter} OR v.mobile_number ILIKE ${parameter} OR v.father_name ILIKE ${parameter})`;
+    }
+    return query;
 }
 
 function normalizeEmailPart(value) {
@@ -200,6 +276,24 @@ app.post('/api/uploads', authenticateToken, requireRoles('constituency_coordinat
     } catch (error) {
         console.error('Document upload failed:', error.message);
         res.status(502).json({ error: 'Unable to store the uploaded documents.' });
+    }
+});
+
+app.get('/api/voters/check-duplicate', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), async (req, res) => {
+    const voterId = String(req.query.voter_id || '').trim().toUpperCase();
+    const acknowledgementNumber = String(req.query.acknowledgement_number || '').trim().toUpperCase();
+    if (!voterId && !acknowledgementNumber) return res.json({ voter_id_exists: false, acknowledgement_number_exists: false });
+    try {
+        const result = await pool.query(
+            `SELECT
+                EXISTS (SELECT 1 FROM voters WHERE voter_id = $1) AS voter_id_exists,
+                EXISTS (SELECT 1 FROM voters WHERE acknowledgement_number = $2) AS acknowledgement_number_exists`,
+            [voterId || null, acknowledgementNumber || null]
+        );
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Duplicate check failed:', error.message);
+        res.status(500).json({ error: 'Unable to check duplicate values.' });
     }
 });
 
@@ -269,8 +363,8 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
         if (!coordinatorEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(coordinatorEmail)) {
             return res.status(400).json({ error: 'A valid generated login email is required.' });
         }
-        if (personalEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(personalEmail)) {
-            return res.status(400).json({ error: 'Enter a valid personal email address for the agent.' });
+        if (personalEmail && (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(personalEmail) || personalEmail !== personalEmail.toLowerCase())) {
+            return res.status(400).json({ error: 'Enter a valid lowercase personal email address for the agent.' });
         }
 
         const salt = await bcrypt.genSalt(10);
@@ -294,7 +388,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
     const {
         voter_id, voter_name, father_name, date_of_birth, mobile_number, email, gender, nationality,
         degree_qualification, graduation_year, form18_number, acknowledgement_number, reference_number, region,
-        constituency, booth_number, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, notes
+        constituency, booth_number, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, notes, submission_key
     } = req.body;
     try {
         const numericCoordinatorId = req.user.role === 'constituency_coordinator'
@@ -312,10 +406,16 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             const coordinator = await pool.query('SELECT id FROM users WHERE id = $1 AND role = \'constituency_coordinator\'', [numericCoordinatorId]);
             if (!coordinator.rowCount) return res.status(400).json({ error: 'Select a valid coordinator for this enrollment.' });
         }
-        if (!voter_id || !voter_name || !father_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !degree_qualification || !graduation_year || !acknowledgement_number || !complete_address || !village || !district || !pincode || !booth_number) {
+        const normalizedVoterId = String(voter_id || '').trim().toUpperCase();
+        const normalizedAcknowledgementNumber = String(acknowledgement_number || '').trim().toUpperCase();
+        const normalizedBoothNumber = String(booth_number || '').trim().toUpperCase();
+        if (!normalizedVoterId || !voter_name || !father_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !degree_qualification || !graduation_year || !normalizedAcknowledgementNumber || !complete_address || !village || !district || !pincode || !normalizedBoothNumber) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
         }
-        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) return res.status(400).json({ error: 'Enter a valid personal email address.' });
+        if (!/^[A-Z0-9]{10}$/.test(normalizedVoterId)) return res.status(400).json({ error: 'Enter a valid Voter ID: exactly 10 uppercase letters or numbers.' });
+        if (!/^[A-Z0-9]{12}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid acknowledgement number: exactly 12 uppercase letters or numbers.' });
+        if (!/^[A-Z0-9]+$/.test(normalizedBoothNumber)) return res.status(400).json({ error: 'Enter a valid ward number using uppercase letters and numbers only.' });
+        if (email && (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(String(email).trim()) || String(email).trim() !== String(email).trim().toLowerCase())) return res.status(400).json({ error: 'Enter a valid email using lowercase letters only.' });
         if (!/^\d{6}$/.test(String(pincode))) return res.status(400).json({ error: 'Check the pincode.' });
         if (Number(graduation_year) > 2023) return res.status(400).json({ error: 'Only graduates who passed out before November 2023 are eligible.' });
         const submittedDocumentUrls = Array.isArray(req.body.degree_certificate_urls)
@@ -325,7 +425,11 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         const documentUrls = submittedDocumentUrls;
         const primaryDocumentUrl = documentUrls[0] || '';
 
-        const dateOfBirth = new Date(date_of_birth);
+        const dateParts = String(date_of_birth).trim().split('-');
+        const normalizedDateOfBirth = dateParts.length === 3 && /^\d{2}-\d{2}-\d{4}$/.test(String(date_of_birth).trim())
+            ? `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`
+            : String(date_of_birth).trim();
+        const dateOfBirth = new Date(`${normalizedDateOfBirth}T00:00:00`);
         const ageAtGraduation = Number(graduation_year) - dateOfBirth.getFullYear();
         if (Number.isNaN(dateOfBirth.getTime())) {
             return res.status(400).json({ error: 'Invalid date of birth.' });
@@ -334,26 +438,62 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             return res.status(400).json({ error: 'Invalid age' });
         }
         const voterEmail = String(email || `${String(voter_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@kingmayker.com`).trim();
-        const newVoter = await pool.query(
+        const submissionKey = String(submission_key || crypto.randomUUID()).trim();
+        if (submissionKey.length > 120) return res.status(400).json({ error: 'Invalid submission key.' });
+
+        const client = await pool.connect();
+        let newVoter;
+        try {
+            await client.query('BEGIN');
+            const existingSubmission = await client.query(
+                `SELECT ${safeVoterColumns} FROM voters v LEFT JOIN users u ON v.coordinator_id = u.id WHERE v.submission_key = $1 LIMIT 1`,
+                [submissionKey]
+            );
+            if (existingSubmission.rowCount) {
+                await client.query('COMMIT');
+                return res.status(200).json({ message: 'Enrollment already submitted', voter: existingSubmission.rows[0], duplicate: true });
+            }
+
+            const existingIdentifier = await client.query(
+                'SELECT voter_id, acknowledgement_number FROM voters WHERE voter_id = $1 OR acknowledgement_number = $2 LIMIT 1',
+                [normalizedVoterId, normalizedAcknowledgementNumber]
+            );
+            if (existingIdentifier.rowCount) {
+                await client.query('ROLLBACK');
+                const duplicate = existingIdentifier.rows[0].voter_id === normalizedVoterId ? 'Voter ID' : 'acknowledgement number';
+                return res.status(409).json({ error: `This ${duplicate} already exists.` });
+            }
+
+            newVoter = await client.query(
             `INSERT INTO voters (
                 coordinator_id, voter_name, father_name, date_of_birth,
                 mobile_number, citizenship_status, constituency, booth_number, mandal,
                 village, degree_qualification, graduation_year, degree_certificate_url, degree_certificate_urls, enrollment_status,
                 voter_id, gender, email, nationality,
                 form18_number, acknowledgement_number, reference_number, house_number, street,
-                complete_address, district, state, pincode, region, notes
+                complete_address, district, state, pincode, region, notes, submission_key
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending',
-                $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
-            RETURNING *`,
+                $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
+            RETURNING id, coordinator_id, voter_name, voter_id, enrollment_status, constituency, mandal, village, created_at`,
             [
-                numericCoordinatorId, voter_name, father_name, date_of_birth,
-                mobile_number, true, constituency, booth_number, mandal,
+                numericCoordinatorId, voter_name, father_name, normalizedDateOfBirth,
+                mobile_number, true, constituency, normalizedBoothNumber, mandal,
                 village, degree_qualification, graduation_year, primaryDocumentUrl, documentUrls,
-                voter_id, gender, voterEmail, nationality,
-                form18_number, acknowledgement_number, reference_number, house_number, street,
-                complete_address || [house_number, street].filter(Boolean).join(', '), district, state, pincode, region, notes
+                normalizedVoterId, gender, voterEmail, nationality,
+                form18_number, normalizedAcknowledgementNumber, reference_number, house_number, street,
+                complete_address || [house_number, street].filter(Boolean).join(', '), district, state, pincode, region, notes, submissionKey
             ]
-        );
+            );
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK');
+            if (error.code === '23505') {
+                return res.status(409).json({ error: 'This voter or enrollment reference has already been submitted.' });
+            }
+            throw error;
+        } finally {
+            client.release();
+        }
         res.status(201).json({ message: 'Enrolled', voter: newVoter.rows[0] });
             writeAudit(req.user.id, 'voter_enrolled', { voter_id: newVoter.rows[0].id, constituency, mandal });
     } catch (err) {
@@ -363,20 +503,64 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
 });
 
 app.get('/api/admin/voters', authenticateToken, requireRoles('super_admin', 'party_leader'), async (req, res) => {
-    const { region, constituency, status, mandal } = req.query;
+    const { region, constituency, status, mandal, search } = req.query;
+    const pagination = getPagination(req.query);
     try {
-        let query = 'SELECT v.*, u.name as coordinator_name FROM voters v LEFT JOIN users u ON v.coordinator_id = u.id WHERE 1=1';
-        let params = [];
-        let paramIndex = 1;
-        if (region) { query += ` AND v.region = $${paramIndex++}`; params.push(region); }
-        if (constituency) { query += ` AND v.constituency = $${paramIndex++}`; params.push(constituency); }
-        if (status) { query += ` AND v.enrollment_status = $${paramIndex++}`; params.push(status); }
-        if (mandal) { query += ` AND v.mandal = $${paramIndex++}`; params.push(mandal); }
-        query += ' ORDER BY v.created_at DESC';
+        const filters = { region, constituency, mandal, status, search };
+        let countQuery = 'SELECT COUNT(*)::int AS total FROM voters v WHERE 1=1';
+        const countParams = [];
+        countQuery = addVoterFilters(countQuery, countParams, filters);
+        const total = (await pool.query(countQuery, countParams)).rows[0].total;
+
+        let query = `SELECT ${safeVoterColumns} FROM voters v LEFT JOIN users u ON v.coordinator_id = u.id WHERE 1=1`;
+        const params = [];
+        query = addVoterFilters(query, params, filters);
+        if (pagination.cursor) {
+            params.push(pagination.cursor.created_at, pagination.cursor.id);
+            query += ` AND (v.created_at, v.id) < ($${params.length - 1}, $${params.length})`;
+        }
+        query += ' ORDER BY v.created_at DESC, v.id DESC';
+        if (!pagination.cursor) {
+            params.push((pagination.page - 1) * pagination.limit);
+            query += ` OFFSET $${params.length}`;
+        }
+        params.push(pagination.limit + 1);
+        query += ` LIMIT $${params.length}`;
         const result = await pool.query(query, params);
-        res.json({ total_count: result.rows.length, voters: result.rows });
+        const hasMore = result.rows.length > pagination.limit;
+        const voters = hasMore ? result.rows.slice(0, pagination.limit) : result.rows;
+        res.json({
+            total_count: total,
+            voters,
+            pagination: {
+                page: pagination.page,
+                limit: pagination.limit,
+                total_pages: Math.ceil(total / pagination.limit),
+                has_more: hasMore,
+                next_cursor: hasMore ? encodeCursor(voters[voters.length - 1]) : null
+            }
+        });
     } catch (err) {
         res.status(500).json({ error: 'Server error while fetching voters' });
+    }
+});
+
+app.get('/api/admin/summary', authenticateToken, requireRoles('super_admin', 'party_leader'), async (req, res) => {
+    const { region, constituency, status, mandal, search } = req.query;
+    try {
+        const filters = { region, constituency, mandal, status, search };
+        let where = 'FROM voters v WHERE 1=1';
+        const params = [];
+        where = addVoterFilters(where, params, filters);
+        const [metrics, regions, trend, coordinators] = await Promise.all([
+            pool.query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE enrollment_status IN ('pending', 'in_progress'))::int AS pending, COUNT(*) FILTER (WHERE enrollment_status = 'approved')::int AS approved, COUNT(*) FILTER (WHERE enrollment_status = 'rejected')::int AS rejected ${where}`, params),
+            pool.query(`SELECT region, COUNT(*)::int AS count ${where} GROUP BY region ORDER BY region`, params),
+            pool.query(`SELECT created_at::date AS day, COUNT(*)::int AS count ${where} AND created_at >= CURRENT_DATE - INTERVAL '6 days' GROUP BY created_at::date ORDER BY day`, params),
+            pool.query('SELECT COUNT(*)::int AS total FROM users WHERE role = \'constituency_coordinator\'')
+        ]);
+        res.json({ metrics: { ...metrics.rows[0], active_coordinators: coordinators.rows[0].total }, regional_breakdown: regions.rows, daily_trend: trend.rows });
+    } catch (err) {
+        res.status(500).json({ error: 'Unable to load enrollment summary.' });
     }
 });
 
@@ -393,15 +577,31 @@ app.get('/api/admin/overview', authenticateToken, requireRoles('super_admin'), a
 
 app.get('/api/admin/enrollments', authenticateToken, requireRoles('super_admin'), async (req, res) => {
     const { region, constituency, mandal, status, search } = req.query;
+    const pagination = getPagination(req.query);
     try {
-        let query = 'SELECT v.*, u.name AS coordinator_name FROM voters v LEFT JOIN users u ON v.coordinator_id = u.id WHERE 1=1';
+        const filters = { region, constituency, mandal, status, search };
+        let countQuery = 'SELECT COUNT(*)::int AS total FROM voters v WHERE 1=1';
+        const countParams = [];
+        countQuery = addVoterFilters(countQuery, countParams, filters);
+        const total = (await pool.query(countQuery, countParams)).rows[0].total;
+        let query = `SELECT ${safeVoterColumns} FROM voters v LEFT JOIN users u ON v.coordinator_id = u.id WHERE 1=1`;
         const params = [];
-        const add = (condition, value) => { if (value) { params.push(value); query += ` AND ${condition} = $${params.length}`; } };
-        add('v.region', region); add('v.constituency', constituency); add('v.mandal', mandal); add('v.enrollment_status', status);
-        if (search) { params.push(`%${search}%`); query += ` AND (v.voter_name ILIKE $${params.length} OR v.voter_id ILIKE $${params.length} OR v.mobile_number ILIKE $${params.length})`; }
-        query += ' ORDER BY v.created_at DESC LIMIT 1000';
+        query = addVoterFilters(query, params, filters);
+        if (pagination.cursor) {
+            params.push(pagination.cursor.created_at, pagination.cursor.id);
+            query += ` AND (v.created_at, v.id) < ($${params.length - 1}, $${params.length})`;
+        }
+        query += ' ORDER BY v.created_at DESC, v.id DESC';
+        if (!pagination.cursor) {
+            params.push((pagination.page - 1) * pagination.limit);
+            query += ` OFFSET $${params.length}`;
+        }
+        params.push(pagination.limit + 1);
+        query += ` LIMIT $${params.length}`;
         const result = await pool.query(query, params);
-        res.json({ voters: result.rows, total_count: result.rowCount });
+        const hasMore = result.rows.length > pagination.limit;
+        const voters = hasMore ? result.rows.slice(0, pagination.limit) : result.rows;
+        res.json({ voters, total_count: total, pagination: { page: pagination.page, limit: pagination.limit, total_pages: Math.ceil(total / pagination.limit), has_more: hasMore, next_cursor: hasMore ? encodeCursor(voters[voters.length - 1]) : null } });
     } catch (err) { res.status(500).json({ error: 'Unable to load enrollment feed.' }); }
 });
 
@@ -489,11 +689,33 @@ app.get('/api/geo/mandals', async (req, res) => {
 app.get('/api/coordinator/history', authenticateToken, requireRoles('constituency_coordinator'), async (req, res) => {
     try {
         const search = String(req.query.search || '').trim();
-        const result = await pool.query(
-            'SELECT * FROM voters WHERE coordinator_id = $1 AND ($2 = \'\' OR voter_id ILIKE $2) ORDER BY created_at DESC',
-            [req.user.id, `%${search}%`]
+        const pagination = getPagination(req.query);
+        const searchPattern = `%${search}%`;
+        const countResult = await pool.query(
+            'SELECT COUNT(*)::int AS total FROM voters WHERE coordinator_id = $1 AND ($2 = \'%%\' OR voter_id ILIKE $2 OR acknowledgement_number ILIKE $2)',
+            [req.user.id, searchPattern]
         );
-        res.json({ voters: result.rows });
+        const params = [req.user.id, searchPattern];
+        let query = `SELECT ${safeVoterColumns} FROM voters v LEFT JOIN users u ON v.coordinator_id = u.id WHERE v.coordinator_id = $1 AND ($2 = '%%' OR v.voter_id ILIKE $2 OR v.acknowledgement_number ILIKE $2)`;
+        if (pagination.cursor) {
+            params.push(pagination.cursor.created_at, pagination.cursor.id);
+            query += ` AND (v.created_at, v.id) < ($${params.length - 1}, $${params.length})`;
+        }
+        query += ' ORDER BY v.created_at DESC, v.id DESC';
+        if (!pagination.cursor) {
+            params.push((pagination.page - 1) * pagination.limit);
+            query += ` OFFSET $${params.length}`;
+        }
+        params.push(pagination.limit + 1);
+        query += ` LIMIT $${params.length}`;
+        const result = await pool.query(
+            query,
+            params
+        );
+        const hasMore = result.rows.length > pagination.limit;
+        const voters = hasMore ? result.rows.slice(0, pagination.limit) : result.rows;
+        const total = countResult.rows[0].total;
+        res.json({ voters, total_count: total, pagination: { page: pagination.page, limit: pagination.limit, total_pages: Math.ceil(total / pagination.limit), has_more: hasMore, next_cursor: hasMore ? encodeCursor(voters[voters.length - 1]) : null } });
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
     }
