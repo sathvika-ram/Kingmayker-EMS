@@ -4,7 +4,6 @@ import * as XLSX from 'xlsx';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Activity, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, FilePlus2, LayoutDashboard, LogOut, Map, Menu, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import CoordinatorModal from '../components/CoordinatorModal';
 import EnrollmentForm from '../components/EnrollmentForm';
 import VotersTable from '../components/VotersTable';
 import { API } from '../utils/api';
@@ -161,15 +160,17 @@ export default function SuperAdminDashboard() {
         <section id="overview" className="scroll-mt-24"><PageHeading eyebrow="Executive command center" title="Analytic Overview" detail="A live operational view of enrollment coverage, verification, and field capacity." action={<div className="flex gap-2"><button onClick={load} title="Refresh data" aria-label="Refresh data" className="rounded-lg border border-slate-300 bg-white p-2.5 text-teal-800 transition hover:bg-teal-50"><RefreshCw size={17} className={loading ? 'animate-spin' : ''} /></button><button onClick={exportData} className="flex items-center gap-2 rounded-lg bg-[#173b35] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f2f2a]"><Download size={17} /> Selected geography XLS</button></div>} /><Panel className="mt-5"><div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600"><Map size={16} /> Executive filters</div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><select className={inputClass} value={filters.region} onChange={event => setFilters({ ...filters, region: event.target.value, constituency: '', mandal: '' })}><option value="">All Regions</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</select>{filters.region ? <select className={inputClass} value={filters.constituency} onChange={event => setFilters({ ...filters, constituency: event.target.value, mandal: '' })}>{constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select> : <select className={inputClass} value={filters.constituency} onChange={event => setFilters({ ...filters, constituency: event.target.value, mandal: '' })}><option value="">All 34 Constituencies</option>{constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select>}{filters.constituency ? <select className={inputClass} value={filters.mandal} onChange={event => setFilters({ ...filters, mandal: event.target.value })}>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</select> : <select className={inputClass} value={filters.mandal} onChange={event => setFilters({ ...filters, mandal: event.target.value })} disabled={!filters.constituency}><option value="">All Mandals</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</select>}<select className={inputClass} value={filters.status} onChange={event => setFilters({ ...filters, status: event.target.value })}><option value="">All Statuses</option><option value="approved">Approved</option><option value="pending">Pending</option><option value="rejected">Rejected</option></select></div><div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Total enrollments" value={filteredMetrics.total} icon={<BarChart3 size={19} />} tone="teal" /><Metric label="Pending review" value={filteredMetrics.pending} icon={<Clock3 size={19} />} tone="amber" /><Metric label="Approved" value={filteredMetrics.approved} icon={<CheckCircle2 size={19} />} tone="green" /><Metric label="Active coordinators" value={filteredMetrics.active_coordinators} icon={<Users size={19} />} tone="blue" /></div><div className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]"><Panel title="Regional growth" detail="Seven-day enrollment growth for the selected geography"><RegionGrowthChart data={regionGrowth} /></Panel><Panel title="Status mix" detail="Current filtered enrollment pipeline"><StatusDonut metrics={filteredMetrics} /></Panel></div></Panel></section>
           <section id="enrollments" className="scroll-mt-24"><PageHeading eyebrow="Operations" title="Enrollments Master Feed" detail="Search, filter, review, and export the complete voter registration stream." action={<div className="mt-1 flex gap-2"><button onClick={() => { const defaultAgent = coordinators.find(item => item.email?.toLowerCase() === 'agent@kingmayker.com') || coordinators[0];
 setEnrollmentCoordinatorId(defaultAgent?.id || ''); setShowEnrollment(true); }} className="flex items-center gap-2 rounded-lg border border-teal-700 bg-white px-4 py-2.5 text-sm font-semibold text-teal-800 transition hover:bg-teal-50"><FilePlus2 size={17} /> Add new enrollment</button><button onClick={exportData} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"><Download size={17} /> Export XLS</button></div>} /><Panel className="mt-5"><div className="grid gap-3 border-b border-slate-100 pb-5 md:grid-cols-[1.5fr_1fr_1fr_1fr]"><div className="relative"><Search size={16} className="absolute left-3 top-3 text-slate-400" /><input className={`${inputClass} pl-9`} value={filters.search} onChange={e => setFilters({ ...filters, search: e.target.value })} placeholder="Search name, voter ID, mobile" /></div><select className={inputClass} value={filters.region} onChange={event => setFilters({ ...filters, region: event.target.value, constituency: '', mandal: '' })}><option value="">All regions</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</select>{filters.region ? <select className={inputClass} value={filters.constituency} onChange={event => setFilters({ ...filters, constituency: event.target.value, mandal: '' })}>{constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select> : <select className={inputClass} value={filters.constituency} onChange={event => setFilters({ ...filters, constituency: event.target.value, mandal: '' })}><option value="">All constituencies</option>{constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select>}<select className={inputClass} value={filters.status} onChange={event => setFilters({ ...filters, status: event.target.value })}><option value="">All Status</option><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></div><div className="mt-5 overflow-hidden rounded-xl border border-slate-200"><div className="max-h-[420px] overflow-y-auto"><table className="min-w-full divide-y divide-slate-200 text-left text-sm"><thead className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500"><tr><th className="px-4 py-3">Voter</th><th className="px-4 py-3">Voter ID</th><th className="px-4 py-3">Region</th><th className="px-4 py-3">Constituency</th><th className="px-4 py-3">Mandal</th><th className="px-4 py-3">Mobile</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100 bg-white">{searchFilteredVoters.map(voter => <tr key={voter.id || `${voter.voter_id}-${voter.name}`} className="align-top hover:bg-slate-50"><td className="px-4 py-3"><div className="font-semibold text-slate-900">{voter.name || 'Unknown voter'}</div><div className="mt-1 text-xs text-slate-500">{voter.email || 'No email'}</div></td><td className="px-4 py-3 text-slate-700">{voter.voter_id || '?'}</td><td className="px-4 py-3 text-slate-700">{voter.region || '?'}</td><td className="px-4 py-3 text-slate-700">{voter.constituency || '?'}</td><td className="px-4 py-3 text-slate-700">{voter.mandal || '?'}</td><td className="px-4 py-3 text-slate-700">{voter.mobile_number || '?'}</td><td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${voter.enrollment_status === 'approved' ? 'bg-emerald-100 text-emerald-700' : voter.enrollment_status === 'pending' || voter.enrollment_status === 'in_progress' ? 'bg-amber-100 text-amber-700' : voter.enrollment_status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{voter.enrollment_status || 'Pending'}</span></td></tr>)}</tbody></table>{!searchFilteredVoters.length && <div className="w-full py-12 text-center text-sm text-slate-500">No matching enrollments found.</div>}</div></div></Panel></section>
-        <section id="coordinators" className="scroll-mt-24"><PageHeading eyebrow="Field operations" title="Coordinator Manager" detail={`${coordinators.length} constituency accounts provisioned in the system.`} /><Panel><InlineCoordinatorForm onCreated={load} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{recentCoordinators.map(coordinator => <div key={coordinator.id} className="rounded-xl border border-slate-200 p-4 transition hover:border-teal-300 hover:shadow-md"><div className="flex items-start justify-between gap-2"><div><h3 className="font-bold text-slate-900">{coordinator.name}</h3><p className="mt-1 text-xs text-teal-700">{coordinator.email}</p></div><span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold uppercase text-green-700">Active</span></div><div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500"><p>{coordinator.assigned_constituency || 'Unassigned'}</p><p className="mt-1">{coordinator.assigned_region || 'Region pending'} Â· {coordinator.mobile_number || 'No mobile'}</p></div></div>)}{!coordinators.length && <Empty loading={loading} label="No coordinators provisioned." />}</div></Panel></section>
+        <section id="coordinators" className="scroll-mt-24"><PageHeading eyebrow="Field operations" title="Coordinator Manager" detail={`${coordinators.length} constituency accounts provisioned in the system.`} /><Panel><InlineCoordinatorForm onCreated={load} /><CoordinatorPasswordReset /><div className="max-h-[280px] overflow-y-auto rounded-lg border border-slate-200"><div className="min-w-[520px]"><div className="grid grid-cols-[1.4fr_1.5fr_0.8fr] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500"><span>Agent</span><span>Assigned access</span><span className="text-right">Enrollments</span></div>{coordinators.map(coordinator => <div key={coordinator.id} className="grid grid-cols-[1.4fr_1.5fr_0.8fr] gap-4 border-b border-slate-100 px-4 py-3 text-sm last:border-0"><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{coordinator.name}</p><p className="truncate text-xs text-teal-700">{coordinator.email}</p></div><p className="truncate text-xs text-slate-500">{coordinator.assigned_region || 'All regions'} / {coordinator.assigned_constituency || 'All constituencies'}</p><p className="text-right font-bold text-teal-700">{Number(coordinator.total_enrollments || 0).toLocaleString()}</p></div>)}{!coordinators.length && <Empty loading={loading} label="No coordinators provisioned." />}</div></div></Panel></section>
         <section id="geography" className="scroll-mt-24"><PageHeading eyebrow="Master geography" title="Geographic Explorer" detail="Search live enrollment coverage by constituency, mandal, and day." /><Panel><div className="mb-5 grid gap-3 border-b border-slate-100 pb-5 lg:grid-cols-[1.4fr_1fr_1fr]"><div className="relative"><Search size={16} className="absolute left-3 top-3 text-slate-400" /><input className={`${inputClass} pl-9`} value={geoSearch} onChange={e => setGeoSearch(e.target.value)} placeholder="Search village, mandal, or constituency" /></div><select className={inputClass} value={filters.constituency} onChange={event => setFilters({ ...filters, constituency: event.target.value })}><option value="">Choose a constituency</option>{constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select><select className={inputClass} value={filters.mandal} onChange={event => setFilters({ ...filters, mandal: event.target.value })} disabled={!filters.constituency}><option value="">Choose its mandal</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</select></div><div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]"><BreakdownPanel title="Constituency breakdown" subtitle="Enrollment coverage by constituency"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-4 py-3">Constituency</th><th className="px-4 py-3">Mandals covered</th><th className="px-4 py-3">Enrolled</th><th className="px-4 py-3">Status</th></tr></thead><tbody>{geographyConstituencies.map(row => <tr key={row.name} className="border-t border-slate-100"><td className="px-4 py-3 font-semibold">{row.name}</td><td className="px-4 py-3">{row.covered}</td><td className="px-4 py-3 font-bold">{row.enrolled}</td><td className="px-4 py-3 text-xs font-semibold">{row.status}</td></tr>)}</tbody></table>{!geographyConstituencies.length && <Empty loading={loading} label="No enrollment data for the selected geography." />}</BreakdownPanel><BreakdownPanel title="Mandal breakdown" subtitle={filters.constituency ? `Approved enrollment rate in ${filters.constituency}` : 'Choose a constituency to view its mandals'}><div className="space-y-4 p-4">{filters.constituency && geographyMandals.length ? geographyMandals.slice(0, 12).map(row => <div key={row.name}><div className="flex justify-between text-sm"><span className="font-semibold">{row.name}</span><span className="text-slate-500">{row.total} total</span></div><div className="mt-2 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-teal-600" style={{ width: `${row.rate}%` }} /></div><div className="mt-1 flex justify-between text-[11px] text-slate-500"><span>{row.approved} approved</span><span>{row.rate}%</span></div></div>) : <Empty loading={false} label={filters.constituency ? 'No enrollment data for this constituency.' : 'Choose a constituency to view its mandal readings.'} />}</div></BreakdownPanel></div><div className="mt-5"><div className="mb-4 flex items-center justify-between"><div><h3 className="font-bold text-slate-900">Daily velocity trend</h3><p className="text-xs text-slate-500">Enrollment volume over the last seven days</p></div><span className="text-sm font-bold text-teal-800">{geographyTrend[geographyTrend.length - 1]?.value || 0} today</span></div><TrendGraph data={geographyTrend} /></div></Panel></section>
         <section id="audit" className="scroll-mt-24"><PageHeading eyebrow="Governance" title="System Audit Logs" detail="A transparent activity stream for authentication, provisioning, and enrollment actions." /><Panel><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><span className="text-xs font-medium text-slate-500">Know Others Activity</span><div className="flex flex-wrap items-center justify-end gap-2"><button type="button" onClick={() => scrollAudit('up')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-teal-300 hover:text-teal-700">Scroll up</button><button type="button" onClick={() => scrollAudit('down')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-teal-300 hover:text-teal-700">Scroll down</button></div></div><div ref={auditLogRef} onScroll={handleAuditScroll} className="max-h-[500px] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50"><table className="min-w-full border-separate border-spacing-0 text-left"><thead className="sticky top-0 z-10 bg-slate-100 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500"><tr><th className="px-4 py-3 text-left">Time</th><th className="px-4 py-3 text-left">Action</th><th className="px-4 py-3 text-left">User</th><th className="px-4 py-3 text-left">Details</th></tr></thead><tbody>{logs.map(log => <tr key={log.id} className="border-t border-slate-200 bg-white/70 align-top transition hover:bg-slate-50"><td className="px-4 py-3 text-xs text-slate-500"><time>{new Date(log.timestamp).toLocaleString()}</time></td><td className="px-4 py-3"><strong className="text-sm font-semibold text-slate-900">{log.action}</strong></td><td className="px-4 py-3 text-sm text-slate-700"><p>{log.user_name || 'System'}</p><p className="mt-1 text-[11px] uppercase tracking-wide text-slate-400">{log.role || 'system'}</p></td><td className="px-4 py-3 text-xs leading-5 text-slate-500"><p className="break-words">{typeof log.details === 'object' ? JSON.stringify(log.details) : log.details || 'No additional details'}</p></td></tr>)}{!logs.length && <tr><td colSpan="4"><Empty loading={loading} label="No activity recorded." /></td></tr>}</tbody></table>{showScrollTop && <div className="flex justify-end border-t border-slate-200 bg-white p-3"><button type="button" onClick={() => auditLogRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-teal-300 hover:text-teal-700">Scroll to top</button></div>}</div></Panel></section>
       </div></main></div>{showEnrollment && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/50 p-4"><div className="mx-auto my-6 max-w-4xl rounded-xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><h2 className="text-lg font-bold text-slate-900">Add new enrollment</h2><p className="text-xs text-slate-500">Assign this enrollment to a coordinator before submitting.</p></div><button onClick={() => setShowEnrollment(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close enrollment form"><X size={19} /></button></div><div className="border-b border-slate-100 px-5 py-4"><label className="block text-sm font-semibold text-slate-700">Coordinator</label><select className={`${inputClass} mt-2 max-w-xl`} value={enrollmentCoordinatorId} onChange={event => setEnrollmentCoordinatorId(event.target.value)}><option value="">Select coordinator</option>{coordinators.map(coordinator => <option key={coordinator.id} value={coordinator.id}>{coordinator.name} Â· {coordinator.assigned_region} Â· {coordinator.assigned_constituency}</option>)}</select></div><EnrollmentForm coordinatorId={enrollmentCoordinatorId} onSubmitted={() => { setShowEnrollment(false); load(); }} /></div></div>}</div>;
 }
 
 function InlineCoordinatorForm({ onCreated }) {
-  const [formData, setFormData] = useState({ name: '', mobile_number: '', temp_password: '', assigned_region: '', assigned_constituency: '', assigned_mandal: '', agent_personal_email: '' });
+  const emptyForm = { name: '', mobile_number: '', temp_password: '', email: '', assigned_region: '', assigned_constituency: '', assigned_mandal: '', agent_personal_email: '' };
+  const [formData, setFormData] = useState(emptyForm);
   const [constituencies, setConstituencies] = useState([]);
+  const [regions, setRegions] = useState([]);
   const [mandals, setMandals] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -179,15 +180,33 @@ function InlineCoordinatorForm({ onCreated }) {
     axios.get(`${API}/geo/assemblies`)
       .then(response => setConstituencies(response.data || []))
       .catch(() => setError('Failed to load constituencies.'));
+    axios.get(`${API}/geo/regions`)
+      .then(response => setRegions(response.data || []))
+      .catch(() => setError('Failed to load regions.'));
   }, []);
 
   const handleChange = (event) => {
-    const next = { ...formData, [event.target.name]: event.target.value };
+    const field = event.target.name;
+    let value = event.target.value;
+    if (field === 'name') value = value.replace(/[^a-zA-Z\s'-]/g, '').replace(/\s+/g, ' ').toUpperCase();
+    if (field === 'mobile_number') value = value.replace(/\D/g, '').slice(0, 10);
+    if (field === 'email' || field === 'agent_personal_email') value = value.toLowerCase();
+    const next = { ...formData, [field]: value };
 
-    if (event.target.name === 'assigned_constituency') {
-      const normalized = String(event.target.value || '').trim();
+    if (field === 'assigned_region') {
+      next.assigned_constituency = value === 'All' ? 'All' : (next.assigned_constituency === 'All' ? '' : next.assigned_constituency);
+      next.assigned_mandal = '';
+      setMandals([]);
+    }
+    if (field === 'assigned_constituency') {
+      const normalized = String(value || '').trim();
+      if (normalized === 'All') {
+        next.assigned_region = 'All';
+        next.assigned_mandal = '';
+        setMandals([]);
+      }
       const selected = constituencies.find(item => String(item.assembly_constituency || '').trim() === normalized);
-      next.assigned_region = selected?.region || '';
+      if (normalized !== 'All') next.assigned_region = selected?.region || '';
       next.assigned_mandal = '';
       setMandals([]);
 
@@ -201,15 +220,13 @@ function InlineCoordinatorForm({ onCreated }) {
     setFormData(next);
   };
 
-  const generatedLoginEmail = getLoginEmail(formData.name, formData.assigned_constituency);
-
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
     setSuccess('');
 
-    if (!formData.name || !formData.mobile_number || !formData.temp_password || !formData.assigned_constituency || !generatedLoginEmail) {
-      setError('Full name, mobile number, temporary password, assigned constituency, and generated login email are required.');
+    if (!formData.name || !/^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(formData.name) || !/^\d{10}$/.test(formData.mobile_number) || !formData.temp_password || !formData.email || !/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(formData.email) || !formData.assigned_region || !formData.assigned_constituency) {
+      setError('Enter a full name in capitals, a valid 10-digit mobile number, lowercase email, password, region, and constituency.');
       return;
     }
 
@@ -218,10 +235,10 @@ function InlineCoordinatorForm({ onCreated }) {
     try {
       await axios.post(`${API}/admin/create-coordinator`, {
         ...formData,
-        generated_login_email: generatedLoginEmail
+        generated_login_email: formData.email
       });
       setSuccess('Coordinator created successfully.');
-      setFormData({ name: '', mobile_number: '', temp_password: '', assigned_region: '', assigned_constituency: '', assigned_mandal: '', agent_personal_email: '' });
+      setFormData(emptyForm);
       setMandals([]);
       onCreated?.();
     } catch (err) {
@@ -244,22 +261,22 @@ function InlineCoordinatorForm({ onCreated }) {
       <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">Full name <span className="text-red-500">*</span></label>
-          <input type="text" name="name" required value={formData.name} onChange={handleChange} className={inputClass} placeholder="e.g. Ramesh Kumar" />
+          <input type="text" name="name" required value={formData.name} onChange={handleChange} className={`${inputClass} uppercase`} placeholder="e.g. RAMESH KUMAR" />
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Generated login email <span className="text-red-500">*</span></label>
-          <input type="email" readOnly required value={generatedLoginEmail} className={`${inputClass} bg-slate-100 text-slate-600`} placeholder="Select the constituency first" />
+          <label className="mb-1 block text-sm font-medium text-slate-700">Login email <span className="text-red-500">*</span></label>
+          <input type="email" name="email" required value={formData.email} onChange={handleChange} className={inputClass} placeholder="agent@example.com" />
         </div>
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">Assigned region <span className="text-red-500">*</span></label>
-          <input readOnly value={formData.assigned_region} className={`${inputClass} bg-slate-100 text-slate-600`} placeholder="Select the constituency first" />
+          <select name="assigned_region" required value={formData.assigned_region} onChange={handleChange} className={inputClass}><option value="">Select region</option><option value="All">All regions</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</select>
         </div>
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">Mobile number <span className="text-red-500">*</span></label>
-          <input type="tel" name="mobile_number" required pattern="[0-9]{10}" value={formData.mobile_number} onChange={handleChange} className={inputClass} placeholder="10-digit mobile number" />
+          <input type="tel" name="mobile_number" required pattern="[0-9]{10}" inputMode="numeric" maxLength="10" value={formData.mobile_number} onChange={handleChange} className={inputClass} placeholder="10-digit mobile number" />
         </div>
 
         <div>
@@ -270,8 +287,8 @@ function InlineCoordinatorForm({ onCreated }) {
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">Assigned constituency <span className="text-red-500">*</span></label>
           <select name="assigned_constituency" required value={formData.assigned_constituency} onChange={handleChange} className={inputClass}>
-            <option value="">Select constituency</option>
-            {constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency} ({item.region})</option>)}
+            <option value="">Select constituency</option><option value="All">All constituencies</option>
+            {constituencies.filter(item => !formData.assigned_region || formData.assigned_region === 'All' || item.region === formData.assigned_region).map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency} ({item.region})</option>)}
           </select>
         </div>
 
@@ -296,6 +313,30 @@ function InlineCoordinatorForm({ onCreated }) {
       </form>
     </div>
   );
+}
+function CoordinatorPasswordReset() {
+  const [email, setEmail] = useState('agent@kingmayker.com');
+  const [newPassword, setNewPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const reset = async event => {
+    event.preventDefault();
+    setMessage(''); setError('');
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.post(`${API}/admin/coordinators/reset-password`, { email: email.toLowerCase(), new_password: newPassword });
+      setMessage(`${response.data.email}: password reset successfully.`);
+      setNewPassword('');
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || 'Unable to reset password.');
+    } finally { setLoading(false); }
+  };
+  return <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-base font-bold text-slate-900">Reset agent password</h3><form onSubmit={reset} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]"><input type="email" required value={email} onChange={event => setEmail(event.target.value.toLowerCase())} className={inputClass} placeholder="agent@kingmayker.com" aria-label="Agent login email" /><input type="password" required minLength="8" value={newPassword} onChange={event => setNewPassword(event.target.value)} className={inputClass} placeholder="New password (8+ characters)" aria-label="New password" /><button type="submit" disabled={loading} className="rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{loading ? 'Updating...' : 'Update password'}</button></form>{message && <p className="mt-3 break-all text-sm font-semibold text-emerald-700">{message}</p>}{error && <p className="mt-3 text-sm text-red-700">{error}</p>}<p className="mt-2 text-xs text-amber-800">Enter the agent login email and new password to replace the existing password.</p></div>;
 }
 function PageHeading({ eyebrow, title, detail, action }) { return <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700">{eyebrow}</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">{title}</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">{detail}</p></div>{action}</div>; }
 function Panel({ title, detail, children, className = '' }) { return <div className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 ${className}`}>{title && <div className="mb-5"><h3 className="font-bold text-slate-900">{title}</h3>{detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}</div>}{children}</div>; }

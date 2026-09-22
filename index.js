@@ -391,15 +391,17 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
         const selectedMandal = String(assigned_mandal || '').trim();
         const personalEmail = String(agent_personal_email || personal_email || '').trim();
 
-        if (!normalizedName || !/^\d{10}$/.test(String(mobile_number || '')) || !temp_password || !selectedConstituency) {
-            return res.status(400).json({ error: 'Full name, 10-digit mobile, password, and constituency are required.' });
+        const coordinatorEmail = String(generated_login_email || req.body.email || '').trim().toLowerCase();
+        if (!normalizedName || !/^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(normalizedName) || !/^\d{10}$/.test(String(mobile_number || '')) || !temp_password || !coordinatorEmail || !/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(coordinatorEmail)) {
+            return res.status(400).json({ error: 'Enter a valid name, 10-digit mobile, password, and lowercase email.' });
         }
 
-        const regionLookup = selectedRegion || (await pool.query('SELECT "Old District" FROM master_geography WHERE "Assembly Constituency" = $1 LIMIT 1', [selectedConstituency])).rows[0]?.['Old District'];
+        if (!['All', ''].includes(selectedRegion) && !selectedConstituency) return res.status(400).json({ error: 'Select a constituency or choose All constituency access.' });
+        const regionLookup = selectedRegion || (selectedConstituency && (await pool.query('SELECT "Old District" FROM master_geography WHERE "Assembly Constituency" = $1 LIMIT 1', [selectedConstituency])).rows[0]?.['Old District']);
         const resolvedRegion = String(regionLookup || '').trim();
-        if (!resolvedRegion) return res.status(400).json({ error: 'Please select a valid constituency so the region can be auto-generated.' });
+        if (!resolvedRegion) return res.status(400).json({ error: 'Select a valid region or choose All region access.' });
 
-        if (selectedMandal) {
+        if (selectedMandal && selectedConstituency && selectedConstituency !== 'All' && resolvedRegion !== 'All') {
             const geography = await pool.query(
                 'SELECT 1 FROM master_geography WHERE "Old District" = $1 AND "Assembly Constituency" = $2 AND "Mandal" = $3 LIMIT 1',
                 [resolvedRegion, selectedConstituency, selectedMandal]
@@ -407,10 +409,6 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
             if (!geography.rowCount) return res.status(400).json({ error: 'The selected region, constituency, and mandal do not match.' });
         }
 
-        const coordinatorEmail = String(generated_login_email || buildCoordinatorEmail(normalizedName, selectedConstituency)).trim();
-        if (!coordinatorEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(coordinatorEmail)) {
-            return res.status(400).json({ error: 'A valid generated login email is required.' });
-        }
         if (personalEmail && (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(personalEmail) || personalEmail !== personalEmail.toLowerCase())) {
             return res.status(400).json({ error: 'Enter a valid lowercase personal email address for the agent.' });
         }
@@ -662,9 +660,29 @@ app.get('/api/admin/enrollments', authenticateToken, requireRoles('super_admin')
 
 app.get('/api/admin/coordinators', authenticateToken, requireRoles('super_admin'), async (req, res) => {
     try {
-        const result = await pool.query(`SELECT id, name, email, mobile_number, assigned_region, assigned_constituency, assigned_mandal, created_at FROM users WHERE role = 'constituency_coordinator' ORDER BY name`);
+        const result = await pool.query(`SELECT u.id, u.name, u.email, u.mobile_number, u.assigned_region, u.assigned_constituency, u.assigned_mandal, u.created_at, COUNT(v.id)::int AS total_enrollments FROM users u LEFT JOIN voters v ON v.coordinator_id = u.id WHERE u.role = 'constituency_coordinator' GROUP BY u.id ORDER BY u.name`);
         res.json({ coordinators: result.rows });
     } catch (err) { res.status(500).json({ error: 'Unable to load coordinators.' }); }
+});
+
+app.post('/api/admin/coordinators/reset-password', authenticateToken, requireRoles('super_admin'), async (req, res) => {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const newPassword = String(req.body.new_password || '');
+    if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) return res.status(400).json({ error: 'Enter a valid lowercase agent email.' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+    try {
+        const passwordHash = await bcrypt.hash(newPassword, 12);
+        const result = await pool.query(
+            `UPDATE users SET password_hash = $1 WHERE email = $2 AND role = 'constituency_coordinator' RETURNING id, name, email`,
+            [passwordHash, email]
+        );
+        if (!result.rowCount) return res.status(404).json({ error: 'Coordinator account not found for that email.' });
+        writeAudit(req.user.id, 'coordinator_password_reset', { coordinator_id: result.rows[0].id });
+        res.json({ message: 'Password reset successfully.', email });
+    } catch (error) {
+        console.error('Coordinator password reset failed:', error.message);
+        res.status(500).json({ error: 'Unable to reset coordinator password.' });
+    }
 });
 
 app.get('/api/admin/geography', authenticateToken, requireRoles('super_admin'), async (req, res) => {
