@@ -36,6 +36,34 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
+  useEffect(() => {
+    const clearExpiredSession = () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const decoded = jwtDecode(token);
+        if (!decoded?.exp || decoded.exp * 1000 <= Date.now()) {
+          ['token', 'role', 'name', 'assigned_constituency', 'assigned_region', 'assigned_mandal', 'id'].forEach(key => localStorage.removeItem(key));
+          delete axios.defaults.headers.common['Authorization'];
+          setUser(null);
+        }
+      } catch {
+        delete axios.defaults.headers.common['Authorization'];
+        setUser(null);
+      }
+    };
+    const timer = setInterval(clearExpiredSession, 30000);
+    const interceptor = axios.interceptors.response.use(response => response, error => {
+      const requestUrl = String(error.config?.url || '');
+      if ([401, 403].includes(error.response?.status) && !requestUrl.includes('/auth/login')) clearExpiredSession();
+      return Promise.reject(error);
+    });
+    return () => {
+      clearInterval(timer);
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
+
   const login = async (email, password) => {
     const response = await axios.post(`${API}/auth/login`, { email, password });
     const { token, role, name, assigned_region, assigned_constituency, assigned_mandal } = response.data;

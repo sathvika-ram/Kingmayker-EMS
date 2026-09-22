@@ -6,12 +6,13 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const multer = require('multer');
+const sharp = require('sharp');
 require('dotenv').config();
 
 const app = express();
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 const allowedOrigins = Array.from(new Set([
     'http://localhost:5173',
     'http://127.0.0.1:5173',
@@ -22,6 +23,13 @@ const allowedOrigins = Array.from(new Set([
         .filter(Boolean)
 ]));
 app.use(cors({ origin: allowedOrigins }));
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+});
 
 // PostgreSQL Connection Pool Setup
 function getDatabaseConnectionString() {
@@ -53,12 +61,20 @@ const loginLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
 });
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 600,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please try again later.' }
+});
+app.use('/api', apiLimiter);
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { files: 2, fileSize: 10 * 1024 * 1024 },
+    limits: { files: 2, fileSize: 2 * 1024 * 1024 },
     fileFilter: (req, file, callback) => {
-        if (/^(image\/(jpeg|png|jpg)|application\/pdf)$/.test(file.mimetype)) return callback(null, true);
-        callback(new Error('Only JPG, PNG, and PDF files are allowed.'));
+        if (/^image\/(jpeg|png|jpg)$/.test(file.mimetype)) return callback(null, true);
+        callback(new Error('Only JPG, JPEG, and PNG images are allowed.'));
     }
 });
 const storageRequestTimeout = 15000;
@@ -105,7 +121,7 @@ async function ensureSupabaseBucket(storage) {
         body: JSON.stringify({
             id: storage.bucket,
             name: storage.bucket,
-            public: true,
+            public: false,
             allowed_mime_types: ['image/jpeg', 'image/png', 'application/pdf']
         }),
         signal: AbortSignal.timeout(storageRequestTimeout)
@@ -130,7 +146,13 @@ async function ensureVoterColumns() {
         ADD COLUMN IF NOT EXISTS reference_number VARCHAR(120),
         ADD COLUMN IF NOT EXISTS submission_key VARCHAR(120),
         ADD COLUMN IF NOT EXISTS house_number VARCHAR(120),
-        ADD COLUMN IF NOT EXISTS street VARCHAR(255)
+        ADD COLUMN IF NOT EXISTS street VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS surname VARCHAR(120),
+        ADD COLUMN IF NOT EXISTS polling_station VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS ps_si_number VARCHAR(60),
+        ADD COLUMN IF NOT EXISTS ward VARCHAR(60),
+        ADD COLUMN IF NOT EXISTS post_office VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS photo_url TEXT
     `);
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
@@ -175,6 +197,7 @@ const safeVoterColumns = `
     v.enrollment_status, v.voter_id, v.gender, v.email, v.nationality,
     v.form18_number, v.acknowledgement_number, v.reference_number,
     v.house_number, v.street, v.complete_address, v.district, v.state,
+    v.surname, v.polling_station, v.ps_si_number, v.ward, v.post_office,
     v.pincode, v.region, v.notes, v.created_at, v.updated_at,
     u.name AS coordinator_name`;
 
@@ -227,6 +250,10 @@ function buildCoordinatorEmail(name, constituency) {
     return `${firstName}.${area}@kingmayker.com`;
 }
 
+function titleCaseName(value) {
+    return String(value || '').trim().toLowerCase().replace(/(^|[\s'-])([a-z])/g, (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
+}
+
     function writeAudit(userId, action, details = {}) {
         return pool.query(
             'INSERT INTO audit_logs (user_id, action, details, timestamp) VALUES ($1, $2, $3, NOW())',
@@ -251,28 +278,49 @@ const requireRoles = (...roles) => (req, res, next) => {
     next();
 };
 
-app.post('/api/uploads', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), upload.array('files', 2), async (req, res) => {
-    if (!req.files?.length) return res.status(400).json({ error: 'Select at least one file to upload.' });
+async function createSignedStorageUrl(storage, filePath) {
+    const response = await fetch(`${storage.url}/storage/v1/object/sign/${encodeURIComponent(storage.bucket)}`, {
+        method: 'POST',
+        headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: filePath, expiresIn: 86400 }),
+        signal: AbortSignal.timeout(storageRequestTimeout)
+    });
+    if (!response.ok) throw new Error(`Signed URL creation failed: ${await response.text()}`);
+    const result = await response.json();
+    return `${storage.url}/storage/v1${result.signedURL}`;
+}
+
+app.post('/api/uploads', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'degree_certificate', maxCount: 1 }]), async (req, res) => {
+    const photo = req.files?.photo?.[0];
+    const degreeCertificate = req.files?.degree_certificate?.[0];
+    if (!photo && !degreeCertificate) return res.status(400).json({ error: 'Select a photo or degree certificate to upload.' });
     const storage = getSupabaseStorageConfig();
     if (!storage.key) return res.status(500).json({ error: 'File storage is not configured on the server.' });
 
     try {
         await ensureSupabaseBucket(storage);
 
-        const urls = [];
-        for (const file of req.files) {
+        const uploaded = {};
+        for (const [fieldName, file] of [['photo', photo], ['degree_certificate', degreeCertificate]]) {
+            if (!file) continue;
+            const compressed = await sharp(file.buffer)
+                .rotate()
+                .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 78, mozjpeg: true })
+                .toBuffer();
+            if (compressed.length > 200 * 1024) return res.status(413).json({ error: `${fieldName === 'photo' ? 'Photo' : 'Degree certificate'} must be 200 KB or smaller after compression.` });
             const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const filePath = `${req.user.id}/${crypto.randomUUID()}-${safeName}`;
+            const filePath = `${req.user.id}/${fieldName}/${crypto.randomUUID()}-${safeName}.jpg`;
             const response = await fetch(`${storage.url}/storage/v1/object/${storage.bucket}/${filePath.split('/').map(encodeURIComponent).join('/')}`, {
                 method: 'POST',
-                headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': file.mimetype, 'x-upsert': 'false' },
-                body: file.buffer,
+                headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': 'image/jpeg', 'x-upsert': 'false' },
+                body: compressed,
                 signal: AbortSignal.timeout(storageRequestTimeout)
             });
             if (!response.ok) throw new Error(`Storage upload failed: ${await response.text()}`);
-            urls.push(`${storage.url}/storage/v1/object/public/${storage.bucket}/${filePath.split('/').map(encodeURIComponent).join('/')}`);
+            uploaded[fieldName] = await createSignedStorageUrl(storage, filePath);
         }
-        res.status(201).json({ urls });
+        res.status(201).json({ photo_url: uploaded.photo || '', degree_certificate_urls: uploaded.degree_certificate ? [uploaded.degree_certificate] : [], urls: [uploaded.photo, uploaded.degree_certificate].filter(Boolean) });
     } catch (error) {
         console.error('Document upload failed:', error.message);
         res.status(502).json({ error: 'Unable to store the uploaded documents.' });
@@ -386,9 +434,9 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
 app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), async (req, res) => {
     // Handling both sets of fields from the modified form
     const {
-        voter_id, voter_name, father_name, date_of_birth, mobile_number, email, gender, nationality,
+        voter_id, voter_name, surname, father_name, date_of_birth, mobile_number, email, gender, nationality,
         degree_qualification, graduation_year, form18_number, acknowledgement_number, reference_number, region,
-        constituency, booth_number, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, notes, submission_key
+        constituency, booth_number, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, photo_url, notes, submission_key, polling_station, ps_si_number, ward, post_office
     } = req.body;
     try {
         const numericCoordinatorId = req.user.role === 'constituency_coordinator'
@@ -407,14 +455,20 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             if (!coordinator.rowCount) return res.status(400).json({ error: 'Select a valid coordinator for this enrollment.' });
         }
         const normalizedVoterId = String(voter_id || '').trim().toUpperCase();
+        const normalizedName = titleCaseName(voter_name);
+        const normalizedSurname = titleCaseName(surname);
+        const normalizedFatherName = titleCaseName(father_name);
+        const normalizedQualification = titleCaseName(degree_qualification);
         const normalizedAcknowledgementNumber = String(acknowledgement_number || '').trim().toUpperCase();
         const normalizedBoothNumber = String(booth_number || '').trim().toUpperCase();
-        if (!normalizedVoterId || !voter_name || !father_name || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !degree_qualification || !graduation_year || !normalizedAcknowledgementNumber || !complete_address || !village || !district || !pincode || !normalizedBoothNumber) {
+        if (!normalizedVoterId || !normalizedName || !normalizedSurname || !normalizedFatherName || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !normalizedQualification || !graduation_year || !normalizedAcknowledgementNumber || !complete_address || !village || !district || !pincode || !post_office) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
         }
+        if (![normalizedName, normalizedSurname, normalizedFatherName].every(value => /^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value))) return res.status(400).json({ error: 'Name fields must contain alphabets only.' });
+        if (!/^[A-Za-z]+(?:[ .\-][A-Za-z]+)*$/.test(normalizedQualification)) return res.status(400).json({ error: 'Educational qualification must contain alphabets only.' });
         if (!/^[A-Z0-9]{10}$/.test(normalizedVoterId)) return res.status(400).json({ error: 'Enter a valid Voter ID: exactly 10 uppercase letters or numbers.' });
         if (!/^[A-Z0-9]{12}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid acknowledgement number: exactly 12 uppercase letters or numbers.' });
-        if (!/^[A-Z0-9]+$/.test(normalizedBoothNumber)) return res.status(400).json({ error: 'Enter a valid ward number using uppercase letters and numbers only.' });
+        if (normalizedBoothNumber && !/^[A-Z0-9]+$/.test(normalizedBoothNumber)) return res.status(400).json({ error: 'Enter a valid ward number using uppercase letters and numbers only.' });
         if (email && (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(String(email).trim()) || String(email).trim() !== String(email).trim().toLowerCase())) return res.status(400).json({ error: 'Enter a valid email using lowercase letters only.' });
         if (!/^\d{6}$/.test(String(pincode))) return res.status(400).json({ error: 'Check the pincode.' });
         if (Number(graduation_year) > 2023) return res.status(400).json({ error: 'Only graduates who passed out before November 2023 are eligible.' });
@@ -466,22 +520,23 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
 
             newVoter = await client.query(
             `INSERT INTO voters (
-                coordinator_id, voter_name, father_name, date_of_birth,
+                coordinator_id, voter_name, surname, father_name, date_of_birth,
                 mobile_number, citizenship_status, constituency, booth_number, mandal,
                 village, degree_qualification, graduation_year, degree_certificate_url, degree_certificate_urls, enrollment_status,
                 voter_id, gender, email, nationality,
                 form18_number, acknowledgement_number, reference_number, house_number, street,
-                complete_address, district, state, pincode, region, notes, submission_key
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending',
-                $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
-            RETURNING id, coordinator_id, voter_name, voter_id, enrollment_status, constituency, mandal, village, created_at`,
+                complete_address, district, state, pincode, region, notes, submission_key, polling_station, ps_si_number, ward, post_office, photo_url
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending',
+                $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+            RETURNING id, coordinator_id, voter_name, surname, voter_id, enrollment_status, constituency, mandal, village, created_at`,
             [
-                numericCoordinatorId, voter_name, father_name, normalizedDateOfBirth,
+                numericCoordinatorId, normalizedName, normalizedSurname, normalizedFatherName, normalizedDateOfBirth,
                 mobile_number, true, constituency, normalizedBoothNumber, mandal,
-                village, degree_qualification, graduation_year, primaryDocumentUrl, documentUrls,
+                village, normalizedQualification, graduation_year, primaryDocumentUrl, documentUrls,
                 normalizedVoterId, gender, voterEmail, nationality,
                 form18_number, normalizedAcknowledgementNumber, reference_number, house_number, street,
-                complete_address || [house_number, street].filter(Boolean).join(', '), district, state, pincode, region, notes, submissionKey
+                complete_address || [house_number, street].filter(Boolean).join(', '), district, state, pincode, region, notes, submissionKey,
+                polling_station ? String(polling_station).trim() : null, ps_si_number ? String(ps_si_number).trim() : null, ward ? String(ward).trim().toUpperCase() : null, String(post_office).trim(), photo_url || null
             ]
             );
             await client.query('COMMIT');
@@ -732,6 +787,16 @@ app.patch('/api/coordinator/voters/:id/status', authenticateToken, requireRoles(
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
     }
+});
+
+app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    if (error?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Each upload must be 2 MB or smaller before compression.' });
+    if (error?.code === 'LIMIT_UNEXPECTED_FILE') return res.status(400).json({ error: 'Only one photo and one degree certificate can be uploaded.' });
+    if (error?.type === 'entity.too.large') return res.status(413).json({ error: 'Request payload is too large.' });
+    if (error?.message?.includes('Only JPG')) return res.status(400).json({ error: error.message });
+    console.error('Unhandled request error:', error.message);
+    res.status(500).json({ error: 'Unexpected server error. Please try again.' });
 });
 
 const PORT = process.env.PORT || 5000;
