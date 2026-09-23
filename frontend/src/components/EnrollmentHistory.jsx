@@ -56,7 +56,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
   }
 
   const visibleHistory = history.filter(voter => !statusOnly || ['pending', 'in_progress'].includes(voter.enrollment_status));
-  const emptyMessage = statusOnly ? 'No pending requests' : search ? 'No enrollment found for this Voter ID or acknowledgement number' : 'No enrollments submitted yet.';
+  const emptyMessage = statusOnly ? 'No pending requests' : search ? 'No enrollment found for this Voter ID or Application ID' : 'No enrollments submitted yet.';
 
   return (
     <div className="p-4">
@@ -73,7 +73,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
             <div key={voter.id} className="bg-white border rounded-lg p-4 shadow-sm flex items-center justify-between">
               <div>
                 <h4 className="flex items-center gap-2 font-semibold text-gray-800"><UserRound size={16} className="text-[#1d6b5d]" />{voter.voter_name}</h4>
-                <p className="mt-1 text-xs font-semibold text-[#1d6b5d]">Voter ID: {voter.voter_id || 'Not available'}</p>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-[#1d6b5d]"><span>Voter ID: {voter.voter_id || 'Not available'}</span><span>Application ID: {voter.acknowledgement_number || 'Not available'}</span></div>
                 <p className="text-xs text-gray-500">{voter.village}, {voter.mandal}</p>
                 <span className="text-xs text-gray-400 mt-1 block">
                   {new Date(voter.created_at).toLocaleDateString()}

@@ -100,14 +100,21 @@ export default function LeaderDashboard() {
     const geography = [region, constituency, mandal].filter(Boolean).join('-') || 'all-regions';
     const filteredRows = voters.map(row => {
       const next = { ...row };
+      if (next.date_of_birth) next.date_of_birth = String(next.date_of_birth).slice(0, 10);
+      delete next.coordinator_id;
       delete next.degree_certificate_url;
       delete next.degree_certificate_urls;
-      delete next.application_type;
-      delete next.form18_number;
-      delete next.reference_number;
+      delete next.photo_url;
       delete next.created_at;
       delete next.updated_at;
-      delete next.whatsapp_number;
+      delete next.citizenship_status;
+      delete next.nationality;
+      delete next.degree_qualification;
+      delete next.graduation_year;
+      delete next.state;
+      delete next.polling_station;
+      delete next.ps_si_number;
+      delete next.ward;
       return next;
     });
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(filteredRows), 'Selected Geography');

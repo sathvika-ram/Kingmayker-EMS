@@ -37,7 +37,8 @@ function getDatabaseConnectionString() {
     if (!connectionString) throw new Error('DATABASE_URL must be configured.');
     const databaseUrl = new URL(connectionString);
     const isSupabase = databaseUrl.hostname.includes('supabase.co') || databaseUrl.hostname.includes('supabase.com');
-    if (isSupabase && process.env.NODE_ENV === 'production' && (databaseUrl.port !== '6543' || databaseUrl.searchParams.get('pgbouncer') !== 'true')) {
+    if (isSupabase && databaseUrl.port === '6543') databaseUrl.searchParams.set('pgbouncer', 'true');
+    if (isSupabase && process.env.NODE_ENV === 'production' && databaseUrl.port !== '6543') {
         throw new Error('Production Supabase DATABASE_URL must use the pooled connection on port 6543 with pgbouncer=true.');
     }
     return databaseUrl.toString();
@@ -46,9 +47,11 @@ function getDatabaseConnectionString() {
 const pool = new Pool({
     connectionString: getDatabaseConnectionString(),
     ssl: { rejectUnauthorized: false },
-    max: 20,
-    idleTimeoutMillis: 30000,
+    max: 5,
+    idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 10000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
 });
 pool.on('error', error => console.error('PostgreSQL pool error:', error.message));
 
@@ -91,20 +94,7 @@ async function ensureSupabaseBucket(storage) {
     });
 
     if (checkResponse.ok) {
-        const patchResponse = await fetch(bucketUrl, {
-            method: 'PATCH',
-            headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                public: false,
-                allowed_mime_types: ['image/jpeg', 'image/png', 'application/pdf']
-            }),
-            signal: AbortSignal.timeout(storageRequestTimeout)
-        });
-
-        if (!patchResponse.ok) {
-            const errorText = await patchResponse.text();
-            console.warn(`Bucket configuration warning: ${errorText}`);
-        }
+        // Existing private buckets are left unchanged; older Storage APIs do not support PATCH here.
         return;
     }
 
@@ -131,19 +121,10 @@ async function ensureVoterColumns() {
         ALTER TABLE voters
         ADD COLUMN IF NOT EXISTS notes TEXT,
         ADD COLUMN IF NOT EXISTS complete_address TEXT,
-        ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(20),
         ADD COLUMN IF NOT EXISTS degree_certificate_url TEXT,
         ADD COLUMN IF NOT EXISTS degree_certificate_urls TEXT[],
-        ADD COLUMN IF NOT EXISTS booth_number VARCHAR(30),
-        ADD COLUMN IF NOT EXISTS form18_number VARCHAR(120),
-        ADD COLUMN IF NOT EXISTS reference_number VARCHAR(120),
         ADD COLUMN IF NOT EXISTS submission_key VARCHAR(120),
-        ADD COLUMN IF NOT EXISTS house_number VARCHAR(120),
-        ADD COLUMN IF NOT EXISTS street VARCHAR(255),
         ADD COLUMN IF NOT EXISTS surname VARCHAR(120),
-        ADD COLUMN IF NOT EXISTS polling_station VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS ps_si_number VARCHAR(60),
-        ADD COLUMN IF NOT EXISTS ward VARCHAR(60),
         ADD COLUMN IF NOT EXISTS post_office VARCHAR(255),
         ADD COLUMN IF NOT EXISTS photo_url TEXT
     `);
@@ -154,7 +135,6 @@ async function ensureVoterColumns() {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS agent_personal_email VARCHAR(255)');
     await pool.query('ALTER TABLE users ALTER COLUMN email DROP NOT NULL');
     await pool.query('ALTER TABLE voters ALTER COLUMN email DROP NOT NULL');
-    await pool.query('ALTER TABLE voters ALTER COLUMN application_type DROP NOT NULL');
     const indexStatements = [
         'CREATE INDEX IF NOT EXISTS voters_voter_id_idx ON voters (voter_id)',
         'CREATE INDEX IF NOT EXISTS voters_coordinator_id_idx ON voters (coordinator_id)',
@@ -167,7 +147,6 @@ async function ensureVoterColumns() {
         'CREATE UNIQUE INDEX IF NOT EXISTS voters_submission_key_unique_idx ON voters (submission_key) WHERE submission_key IS NOT NULL AND submission_key <> \'\'',
         'CREATE UNIQUE INDEX IF NOT EXISTS voters_voter_id_unique_idx ON voters (voter_id) WHERE voter_id IS NOT NULL AND voter_id <> \'\'',
         'CREATE UNIQUE INDEX IF NOT EXISTS voters_acknowledgement_unique_idx ON voters (acknowledgement_number) WHERE acknowledgement_number IS NOT NULL AND acknowledgement_number <> \'\'',
-        'CREATE UNIQUE INDEX IF NOT EXISTS voters_reference_unique_idx ON voters (reference_number) WHERE reference_number IS NOT NULL AND reference_number <> \'\''
     ];
     await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
     for (const statement of indexStatements) {
@@ -185,12 +164,12 @@ async function ensureVoterColumns() {
 
 const safeVoterColumns = `
     v.id, v.coordinator_id, v.voter_name, v.father_name, v.date_of_birth,
-    v.mobile_number, v.citizenship_status, v.constituency, v.booth_number,
-    v.mandal, v.village, v.degree_qualification, v.graduation_year,
-    v.enrollment_status, v.voter_id, v.gender, v.email, v.nationality,
-    v.form18_number, v.acknowledgement_number, v.reference_number,
-    v.house_number, v.street, v.complete_address, v.district, v.state,
-    v.surname, v.polling_station, v.ps_si_number, v.ward, v.post_office,
+    v.mobile_number, v.constituency,
+    v.mandal, v.village,
+    v.degree_certificate_url, v.degree_certificate_urls, v.photo_url,
+    v.enrollment_status, v.voter_id, v.gender, v.email,
+    v.acknowledgement_number, v.complete_address, v.district,
+    v.surname, v.post_office,
     v.pincode, v.region, v.notes, v.created_at, v.updated_at,
     u.name AS coordinator_name`;
 
@@ -247,10 +226,24 @@ function titleCaseName(value) {
     return String(value || '').trim().toLowerCase().replace(/(^|[\s'-])([a-z])/g, (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
 }
 
-    function writeAudit(userId, action, details = {}) {
+    function getAuditRequestDetails(req) {
+        const forwardedFor = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+        return {
+            ip_address: forwardedFor || req?.socket?.remoteAddress || null,
+            user_agent: req?.headers?.['user-agent'] || null,
+            mac_address: 'unavailable from browser/network request',
+            location: {
+                country: req?.headers?.['x-vercel-ip-country'] || req?.headers?.['cf-ipcountry'] || null,
+                region: req?.headers?.['x-vercel-ip-country-region'] || req?.headers?.['cf-region'] || null,
+                city: req?.headers?.['x-vercel-ip-city'] || req?.headers?.['cf-ipcity'] || null
+            }
+        };
+    }
+
+    function writeAudit(userId, action, details = {}, req) {
         return pool.query(
             'INSERT INTO audit_logs (user_id, action, details, timestamp) VALUES ($1, $2, $3, NOW())',
-            [userId || null, action, details]
+            [userId || null, action, { ...details, request: getAuditRequestDetails(req) }]
         ).catch(error => console.error('Audit log write failed:', error.message));
     }
 
@@ -275,12 +268,21 @@ async function createSignedStorageUrl(storage, filePath) {
     const response = await fetch(`${storage.url}/storage/v1/object/sign/${encodeURIComponent(storage.bucket)}`, {
         method: 'POST',
         headers: { apikey: storage.key, Authorization: `Bearer ${storage.key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: filePath, expiresIn: 86400 }),
+        body: JSON.stringify({ paths: [filePath], expiresIn: 86400 }),
         signal: AbortSignal.timeout(storageRequestTimeout)
     });
     if (!response.ok) throw new Error(`Signed URL creation failed: ${await response.text()}`);
     const result = await response.json();
-    return `${storage.url}/storage/v1${result.signedURL}`;
+    const signedUrlList = result.signedURLs || result.signed_urls || (Array.isArray(result) ? result : []);
+    const firstSignedUrl = signedUrlList[0];
+    const signedUrl = typeof firstSignedUrl === 'string'
+        ? firstSignedUrl
+        : firstSignedUrl?.signedURL || firstSignedUrl?.signedUrl || firstSignedUrl?.signed_url || result.signedURL || result.signedUrl || result.signed_url;
+    if (!signedUrl) {
+        const responseKeys = Object.keys(result || {}).join(', ') || 'none';
+        throw new Error(`Signed URL creation returned no URL. Response keys: ${responseKeys}`);
+    }
+    return signedUrl.startsWith('http') ? signedUrl : `${storage.url}/storage/v1${signedUrl}`;
 }
 
 app.post('/api/uploads', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'degree_certificate', maxCount: 1 }]), async (req, res) => {
@@ -293,15 +295,20 @@ app.post('/api/uploads', authenticateToken, requireRoles('constituency_coordinat
     try {
         await ensureSupabaseBucket(storage);
 
-        const uploaded = {};
-        for (const [fieldName, file] of [['photo', photo], ['degree_certificate', degreeCertificate]]) {
-            if (!file) continue;
+        const files = [['photo', photo], ['degree_certificate', degreeCertificate]].filter(([, file]) => file);
+        const compressedFiles = [];
+        for (const [fieldName, file] of files) {
             const compressed = await sharp(file.buffer)
                 .rotate()
                 .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
                 .jpeg({ quality: 78, mozjpeg: true })
                 .toBuffer();
             if (compressed.length > 200 * 1024) return res.status(413).json({ error: `${fieldName === 'photo' ? 'Photo' : 'Degree certificate'} must be 200 KB or smaller after compression.` });
+            compressedFiles.push([fieldName, file, compressed]);
+        }
+
+        const uploaded = {};
+        for (const [fieldName, file, compressed] of compressedFiles) {
             const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
             const filePath = `${req.user.id}/${fieldName}/${crypto.randomUUID()}-${safeName}.jpg`;
             const response = await fetch(`${storage.url}/storage/v1/object/${storage.bucket}/${filePath.split('/').map(encodeURIComponent).join('/')}`, {
@@ -369,7 +376,7 @@ app.post('/api/auth/login', async (req, res) => {
         );
 
             res.json({ message: 'Login successful', token, role: user.role, name: user.name, assigned_region: assignedRegion, assigned_constituency: user.assigned_constituency, assigned_mandal: user.assigned_mandal });
-            writeAudit(user.id, 'user_login', { role: user.role });
+            writeAudit(user.id, 'user_login', { role: user.role }, req);
     } catch (err) {
         res.status(500).json({ error: 'Server error during login' });
     }
@@ -413,7 +420,7 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
              VALUES ($1, $2, $3, $4, 'constituency_coordinator', $5, $6, $7, $8, $9) RETURNING id, name, email, mobile_number, assigned_region, assigned_constituency, assigned_mandal, personal_email, agent_personal_email`,
             [normalizedName, coordinatorEmail, mobile_number, passwordHash, resolvedRegion, selectedConstituency, selectedMandal || null, personalEmail || null, personalEmail || null]
         );
-        writeAudit(req.user?.id, 'coordinator_created', { coordinator_id: newCoordinator.rows[0].id, assigned_constituency: selectedConstituency, assigned_mandal: selectedMandal });
+        writeAudit(req.user?.id, 'coordinator_created', { coordinator_id: newCoordinator.rows[0].id, assigned_constituency: selectedConstituency, assigned_mandal: selectedMandal }, req);
         res.status(201).json({ message: `Coordinator created. Login email: ${coordinatorEmail}`, coordinator: newCoordinator.rows[0] });
     } catch (err) {
         if (err.code === '23505') return res.status(409).json({ error: 'A coordinator already uses this generated login email.' });
@@ -425,9 +432,9 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
 app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), async (req, res) => {
     // Handling both sets of fields from the modified form
     const {
-        voter_id, voter_name, surname, father_name, date_of_birth, mobile_number, email, gender, nationality,
-        degree_qualification, graduation_year, form18_number, acknowledgement_number, reference_number, region,
-        constituency, booth_number, mandal, house_number, street, complete_address, village, district, state, pincode, degree_certificate_url, degree_certificate_urls, photo_url, notes, submission_key, polling_station, ps_si_number, ward, post_office
+        voter_id, voter_name, surname, father_name, date_of_birth, mobile_number, email, gender,
+        acknowledgement_number, region,
+        constituency, mandal, complete_address, village, district, pincode, degree_certificate_url, degree_certificate_urls, photo_url, notes, submission_key, post_office
     } = req.body;
     try {
         const numericCoordinatorId = req.user.role === 'constituency_coordinator'
@@ -449,20 +456,15 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         const normalizedName = titleCaseName(voter_name);
         const normalizedSurname = titleCaseName(surname);
         const normalizedFatherName = titleCaseName(father_name);
-        const normalizedQualification = titleCaseName(degree_qualification);
         const normalizedAcknowledgementNumber = String(acknowledgement_number || '').trim().toUpperCase();
-        const normalizedBoothNumber = String(booth_number || '').trim().toUpperCase();
-        if (!normalizedVoterId || !normalizedName || !normalizedSurname || !normalizedFatherName || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !normalizedQualification || !graduation_year || !normalizedAcknowledgementNumber || !complete_address || !village || !district || !pincode || !post_office) {
+        if (!normalizedVoterId || !normalizedName || !normalizedSurname || !normalizedFatherName || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !normalizedAcknowledgementNumber || !complete_address || !village || !district || !pincode) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
         }
         if (![normalizedName, normalizedSurname, normalizedFatherName].every(value => /^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value))) return res.status(400).json({ error: 'Name fields must contain alphabets only.' });
-        if (!/^[A-Za-z]+(?:[ .\-][A-Za-z]+)*$/.test(normalizedQualification)) return res.status(400).json({ error: 'Educational qualification must contain alphabets only.' });
         if (!/^[A-Z0-9]{10}$/.test(normalizedVoterId)) return res.status(400).json({ error: 'Enter a valid Voter ID: exactly 10 uppercase letters or numbers.' });
-        if (!/^[A-Z0-9]{12}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid acknowledgement number: exactly 12 uppercase letters or numbers.' });
-        if (normalizedBoothNumber && !/^[A-Z0-9]+$/.test(normalizedBoothNumber)) return res.status(400).json({ error: 'Enter a valid ward number using uppercase letters and numbers only.' });
+        if (!/^[A-Z0-9]{12}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid Application ID: exactly 12 uppercase letters or numbers.' });
         if (email && (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(String(email).trim()) || String(email).trim() !== String(email).trim().toLowerCase())) return res.status(400).json({ error: 'Enter a valid email using lowercase letters only.' });
         if (!/^\d{6}$/.test(String(pincode))) return res.status(400).json({ error: 'Check the pincode.' });
-        if (Number(graduation_year) > 2023) return res.status(400).json({ error: 'Only graduates who passed out before November 2023 are eligible.' });
         const submittedDocumentUrls = Array.isArray(req.body.degree_certificate_urls)
             ? req.body.degree_certificate_urls.filter(Boolean)
             : (degree_certificate_url ? [degree_certificate_url] : []);
@@ -475,12 +477,8 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             ? `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`
             : String(date_of_birth).trim();
         const dateOfBirth = new Date(`${normalizedDateOfBirth}T00:00:00`);
-        const ageAtGraduation = Number(graduation_year) - dateOfBirth.getFullYear();
         if (Number.isNaN(dateOfBirth.getTime())) {
             return res.status(400).json({ error: 'Invalid date of birth.' });
-        }
-        if (ageAtGraduation < 20) {
-            return res.status(400).json({ error: 'Invalid age' });
         }
         const voterEmail = String(email || `${String(voter_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@kingmayker.com`).trim();
         const submissionKey = String(submission_key || crypto.randomUUID()).trim();
@@ -505,43 +503,43 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
             );
             if (existingIdentifier.rowCount) {
                 await client.query('ROLLBACK');
-                const duplicate = existingIdentifier.rows[0].voter_id === normalizedVoterId ? 'Voter ID' : 'acknowledgement number';
+                const duplicate = existingIdentifier.rows[0].voter_id === normalizedVoterId ? 'Voter ID' : 'Application ID';
                 return res.status(409).json({ error: `This ${duplicate} already exists.` });
             }
 
             newVoter = await client.query(
             `INSERT INTO voters (
                 coordinator_id, voter_name, surname, father_name, date_of_birth,
-                mobile_number, citizenship_status, constituency, booth_number, mandal,
-                village, degree_qualification, graduation_year, degree_certificate_url, degree_certificate_urls, enrollment_status,
-                voter_id, gender, email, nationality,
-                form18_number, acknowledgement_number, reference_number, house_number, street,
-                complete_address, district, state, pincode, region, notes, submission_key, polling_station, ps_si_number, ward, post_office, photo_url
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending',
-                $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+                mobile_number, constituency, mandal,
+                village, degree_certificate_url, degree_certificate_urls, enrollment_status,
+                voter_id, gender, email,
+                acknowledgement_number,
+                complete_address, district, pincode, region, notes, submission_key, post_office, photo_url
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending',
+                $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
             RETURNING id, coordinator_id, voter_name, surname, voter_id, enrollment_status, constituency, mandal, village, created_at`,
             [
                 numericCoordinatorId, normalizedName, normalizedSurname, normalizedFatherName, normalizedDateOfBirth,
-                mobile_number, true, constituency, normalizedBoothNumber, mandal,
-                village, normalizedQualification, graduation_year, primaryDocumentUrl, documentUrls,
-                normalizedVoterId, gender, voterEmail, nationality,
-                form18_number, normalizedAcknowledgementNumber, reference_number, house_number, street,
-                complete_address || [house_number, street].filter(Boolean).join(', '), district, state, pincode, region, notes, submissionKey,
-                polling_station ? String(polling_station).trim() : null, ps_si_number ? String(ps_si_number).trim() : null, ward ? String(ward).trim().toUpperCase() : null, String(post_office).trim(), photo_url || null
+                mobile_number, constituency, mandal,
+                village, primaryDocumentUrl, documentUrls,
+                normalizedVoterId, gender, voterEmail,
+                normalizedAcknowledgementNumber,
+                complete_address, district, pincode, region, notes, submissionKey,
+                post_office ? String(post_office).trim() : null, photo_url || null
             ]
             );
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK');
             if (error.code === '23505') {
-                return res.status(409).json({ error: 'This voter or enrollment reference has already been submitted.' });
+                return res.status(409).json({ error: 'This voter or Application ID has already been submitted.' });
             }
             throw error;
         } finally {
             client.release();
         }
         res.status(201).json({ message: 'Enrolled', voter: newVoter.rows[0] });
-            writeAudit(req.user.id, 'voter_enrolled', { voter_id: newVoter.rows[0].id, constituency, mandal });
+            writeAudit(req.user.id, 'voter_enrolled', { voter_id: newVoter.rows[0].id, constituency, mandal }, req);
     } catch (err) {
         console.error('Voter enrollment failed:', err);
         res.status(500).json({ error: 'Server error while processing voter enrollment' });
@@ -670,7 +668,7 @@ app.post('/api/admin/coordinators/reset-password', authenticateToken, requireRol
             [passwordHash, email]
         );
         if (!result.rowCount) return res.status(404).json({ error: 'Coordinator account not found for that email.' });
-        writeAudit(req.user.id, 'coordinator_password_reset', { coordinator_id: result.rows[0].id });
+        writeAudit(req.user.id, 'coordinator_password_reset', { coordinator_id: result.rows[0].id }, req);
         res.json({ message: 'Password reset successfully.', email });
     } catch (error) {
         console.error('Coordinator password reset failed:', error.message);
@@ -700,7 +698,7 @@ app.patch('/api/admin/voters/:id/status', authenticateToken, requireRoles('super
         const updatedVoter = await pool.query(`UPDATE voters SET enrollment_status = $1 WHERE id = $2 AND enrollment_status IN ('pending', 'in_progress') RETURNING *`, [enrollment_status, id]);
         if (!updatedVoter.rowCount) return res.status(409).json({ error: 'This enrollment status has already been finalized and cannot be changed.' });
         res.json({ message: 'Updated', voter: updatedVoter.rows[0] });
-            writeAudit(req.user?.id, 'voter_status_updated', { voter_id: id, enrollment_status });
+            writeAudit(req.user?.id, 'voter_status_updated', { voter_id: id, enrollment_status }, req);
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
     }

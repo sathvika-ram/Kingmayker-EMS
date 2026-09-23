@@ -30,6 +30,8 @@ export default function VotersTable({ voters, onUpdateStatus }) {
           <tr key={voter.id} className="hover:bg-gray-50 transition-colors">
             <td className="p-4">
               <div className="font-medium text-gray-800">{voter.voter_name}</div>
+              <div className="text-xs font-semibold text-teal-700">Voter ID: {voter.voter_id || 'N/A'}</div>
+              <div className="text-xs font-semibold text-teal-700">Application ID: {voter.acknowledgement_number || 'N/A'}</div>
               <div className="text-xs text-gray-500">Ph: {voter.mobile_number || 'N/A'}</div>
               <div className="text-xs text-gray-500">F/o: {voter.father_name}</div>
             </td>

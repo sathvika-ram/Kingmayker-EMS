@@ -98,14 +98,21 @@ export default function SuperAdminDashboard() {
     const workbook = XLSX.utils.book_new();
     const sanitizedRows = searchFilteredVoters.map(row => {
       const next = { ...row };
+      if (next.date_of_birth) next.date_of_birth = String(next.date_of_birth).slice(0, 10);
+      delete next.coordinator_id;
       delete next.degree_certificate_url;
       delete next.degree_certificate_urls;
-      delete next.application_type;
-      delete next.form18_number;
-      delete next.reference_number;
+      delete next.photo_url;
       delete next.created_at;
       delete next.updated_at;
-      delete next.whatsapp_number;
+      delete next.citizenship_status;
+      delete next.nationality;
+      delete next.degree_qualification;
+      delete next.graduation_year;
+      delete next.state;
+      delete next.polling_station;
+      delete next.ps_si_number;
+      delete next.ward;
       return next;
     });
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sanitizedRows), 'Enrollments');
@@ -317,6 +324,7 @@ function InlineCoordinatorForm({ onCreated }) {
 function CoordinatorPasswordReset() {
   const [email, setEmail] = useState('agent@kingmayker.com');
   const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -336,7 +344,7 @@ function CoordinatorPasswordReset() {
       setError(requestError.response?.data?.error || 'Unable to reset password.');
     } finally { setLoading(false); }
   };
-  return <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-base font-bold text-slate-900">Reset agent password</h3><form onSubmit={reset} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]"><input type="email" required value={email} onChange={event => setEmail(event.target.value.toLowerCase())} className={inputClass} placeholder="agent@kingmayker.com" aria-label="Agent login email" /><input type="password" required minLength="8" value={newPassword} onChange={event => setNewPassword(event.target.value)} className={inputClass} placeholder="New password (8+ characters)" aria-label="New password" /><button type="submit" disabled={loading} className="rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{loading ? 'Updating...' : 'Update password'}</button></form>{message && <p className="mt-3 break-all text-sm font-semibold text-emerald-700">{message}</p>}{error && <p className="mt-3 text-sm text-red-700">{error}</p>}<p className="mt-2 text-xs text-amber-800">Enter the agent login email and new password to replace the existing password.</p></div>;
+  return <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-base font-bold text-slate-900">Reset agent password</h3><form onSubmit={reset} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]"><input type="email" required value={email} onChange={event => setEmail(event.target.value.toLowerCase())} className={inputClass} placeholder="agent@kingmayker.com" aria-label="Agent login email" /><div className="relative"><input type={showPassword ? 'text' : 'password'} required minLength="8" value={newPassword} onChange={event => setNewPassword(event.target.value)} className={`${inputClass} pr-10`} placeholder="New password (8+ characters)" aria-label="New password" /><button type="button" onClick={() => setShowPassword(current => !current)} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:bg-slate-100" aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? 'Hide' : 'Show'}</button></div><button type="submit" disabled={loading} className="rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{loading ? 'Updating...' : 'Update password'}</button></form>{message && <p className="mt-3 break-all text-sm font-semibold text-emerald-700">{message}</p>}{error && <p className="mt-3 text-sm text-red-700">{error}</p>}<p className="mt-2 text-xs text-amber-800">Enter the agent login email and new password to replace the existing password.</p></div>;
 }
 function PageHeading({ eyebrow, title, detail, action }) { return <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700">{eyebrow}</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">{title}</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">{detail}</p></div>{action}</div>; }
 function Panel({ title, detail, children, className = '' }) { return <div className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 ${className}`}>{title && <div className="mb-5"><h3 className="font-bold text-slate-900">{title}</h3>{detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}</div>}{children}</div>; }
