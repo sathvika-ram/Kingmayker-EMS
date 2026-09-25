@@ -15,6 +15,7 @@ export default function CoordinatorDashboard() {
     setSearch(value);
     if (value.trim()) setActiveTab('history');
   };
+  const effectiveStatusFilter = activeTab === 'status' ? 'pending' : statusFilter;
 
   return (
     <div className="coordinator-shell min-h-screen flex flex-col">
@@ -42,7 +43,7 @@ export default function CoordinatorDashboard() {
       {/* Main Content */}
       <main className="coordinator-main flex-1 w-full bg-white shadow-sm flex flex-col relative pb-20">
         <div className={activeTab === 'enroll' ? '' : 'hidden'}><EnrollmentForm /></div>
-        <div className={activeTab === 'enroll' ? 'hidden' : ''}>{activeTab !== 'enroll' && <div className="flex gap-2 border-b border-gray-200 bg-white p-3"><button type="button" onClick={() => setStatusFilter('')} className={`rounded px-3 py-2 text-xs font-semibold ${!statusFilter ? 'bg-[#173b35] text-white' : 'bg-gray-100 text-gray-600'}`}>All</button><button type="button" onClick={() => setStatusFilter('pending')} className={`rounded px-3 py-2 text-xs font-semibold ${statusFilter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-100 text-gray-600'}`}>Pending</button><button type="button" onClick={() => setStatusFilter('approved')} className={`rounded px-3 py-2 text-xs font-semibold ${statusFilter === 'approved' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>Approved</button><button type="button" onClick={() => setStatusFilter('rejected')} className={`rounded px-3 py-2 text-xs font-semibold ${statusFilter === 'rejected' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600'}`}>Rejected</button></div>}<EnrollmentHistory search={search} statusFilter={statusFilter} /></div>
+        <div className={activeTab === 'enroll' ? 'hidden' : ''}>{activeTab !== 'enroll' && <div className="flex gap-2 border-b border-gray-200 bg-white p-3"><button type="button" onClick={() => setStatusFilter('')} className={`rounded px-3 py-2 text-xs font-semibold ${activeTab === 'status' || !statusFilter ? 'bg-[#173b35] text-white' : 'bg-gray-100 text-gray-600'}`}>All</button><button type="button" onClick={() => setStatusFilter('pending')} className={`rounded px-3 py-2 text-xs font-semibold ${statusFilter === 'pending' && activeTab !== 'status' ? 'bg-yellow-500 text-white' : 'bg-gray-100 text-gray-600'}`}>Pending</button><button type="button" onClick={() => setStatusFilter('approved')} className={`rounded px-3 py-2 text-xs font-semibold ${statusFilter === 'approved' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>Approved</button><button type="button" onClick={() => setStatusFilter('rejected')} className={`rounded px-3 py-2 text-xs font-semibold ${statusFilter === 'rejected' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600'}`}>Rejected</button></div>}<EnrollmentHistory search={search} statusFilter={effectiveStatusFilter} editable={activeTab === 'status'} /></div>
       </main>
 
       {/* Bottom Navigation for Mobile */}

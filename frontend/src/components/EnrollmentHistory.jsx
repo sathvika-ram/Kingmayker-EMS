@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Clock, CheckCircle, XCircle, UserRound } from 'lucide-react';
 import { API } from '../utils/api';
 
-export default function EnrollmentHistory({ search = '', statusFilter = '' }) {
+export default function EnrollmentHistory({ search = '', statusFilter = '', editable = false }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -33,7 +33,7 @@ export default function EnrollmentHistory({ search = '', statusFilter = '' }) {
   };
 
   const updateStatus = async (id, status) => {
-    const confirmed = window.confirm('This status cannot be changed or corrected again. Do you want to continue?');
+    const confirmed = window.confirm(`This enrollment is currently pending. Change its status to ${status.toUpperCase()}? Once changed, it cannot be edited again.`);
     if (!confirmed) return;
     try {
       await axios.patch(`${API}/coordinator/voters/${id}/status`, { status });
@@ -87,7 +87,7 @@ export default function EnrollmentHistory({ search = '', statusFilter = '' }) {
                 }`}>
                   {voter.enrollment_status}
                 </span>
-                {!statusFilter && voter.enrollment_status === 'pending' && (
+                {editable && voter.enrollment_status === 'pending' && (
                   <select
                     value=""
                     onChange={e => {
