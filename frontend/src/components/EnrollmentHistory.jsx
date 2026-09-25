@@ -55,6 +55,7 @@ export default function EnrollmentHistory({ search = '', statusFilter = '' }) {
     return <div className="p-8 text-center text-gray-500">Loading history...</div>;
   }
 
+  const visibleHistory = history;
   const emptyMessage = statusFilter ? `No ${statusFilter} enrollments` : search ? 'No enrollment found for this Voter ID or Application ID' : 'No enrollments submitted yet.';
 
   return (
