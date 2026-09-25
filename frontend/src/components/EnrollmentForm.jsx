@@ -20,6 +20,7 @@ const titleCaseWords = (value) => String(value || '').replace(/[^a-zA-Z\s'-]/g, 
 const MAX_IMAGE_BYTES = 200 * 1024;
 const compressImage = async (file) => {
   if (!file || !/^image\/(jpeg|png|jpg)$/.test(file.type)) throw new Error('Only JPG, JPEG, and PNG images are allowed.');
+  if (file.size > MAX_IMAGE_BYTES) throw new Error('File size should be less than 200 KB.');
   const compressed = await imageCompression(file, {
     maxSizeMB: MAX_IMAGE_BYTES / (1024 * 1024),
     maxWidthOrHeight: 1600,
@@ -110,12 +111,22 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
 
   const handleChange = (e) => {
     const { name } = e.target;
-    let value = e.target.value;
+    const rawValue = e.target.value;
+    let value = rawValue;
+    if (['voter_name', 'surname', 'father_name'].includes(name) && rawValue && !/^[\x00-\x7F]*$/.test(rawValue)) {
+      setFieldErrors(current => ({ ...current, [name]: 'Please use English characters only.' }));
+      return;
+    }
     if (name === 'voter_id' || name === 'acknowledgement_number') value = value.replace(/[^a-z0-9]/gi, '').toUpperCase();
     if (name === 'voter_name' || name === 'surname' || name === 'father_name') value = titleCaseWords(value);
     if (name === 'email') value = value.toLowerCase();
     if (name === 'pincode') value = value.replace(/\D/g, '').slice(0, 6);
     if (name === 'date_of_birth' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) value = formatDateInput(value);
+    const englishOnlyFields = ['village', 'complete_address', 'post_office', 'notes'];
+    if (englishOnlyFields.includes(name) && value && !/^[\x00-\x7F]*$/.test(value)) {
+      setFieldErrors(current => ({ ...current, [name]: 'Please use English characters only.' }));
+      return;
+    }
     if (name === 'constituency') {
       const selected = assemblies.find(item => item.assembly_constituency === value);
       setFormData(current => ({ ...current, constituency: value, region: selected?.region || '', mandal: '' }));
@@ -136,6 +147,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     if (name === 'voter_id' && value && !/^[A-Z0-9]{10}$/.test(value)) return 'Enter valid Voter ID.';
     if (name === 'acknowledgement_number' && value && !/^[A-Z0-9]{12}$/.test(value)) return 'Enter a valid Application ID: exactly 12 uppercase letters or numbers.';
     if (['voter_name', 'surname', 'father_name'].includes(name) && value && !/^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value)) return 'Use alphabets only.';
+    if (['village', 'complete_address', 'post_office', 'notes'].includes(name) && value && !/^[\x00-\x7F]*$/.test(value)) return 'Please use English characters only.';
     if (name === 'date_of_birth' && value && !/^\d{4}-\d{2}-\d{2}$/.test(value) && !/^\d{2}-\d{2}-\d{4}$/.test(value)) return 'Select a valid date.';
     if (name === 'pincode' && value && !/^\d{6}$/.test(value)) return 'Pincode must be exactly 6 digits.';
     if (name === 'date_of_birth' && value && calculateAge(value) < 20) return 'Voter must be at least 20 years old.';

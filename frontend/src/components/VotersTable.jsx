@@ -19,7 +19,7 @@ export default function VotersTable({ voters, onUpdateStatus }) {
         <tr className="bg-gray-50 text-gray-600 border-b">
           <th className="p-4 font-semibold">Voter Info</th>
           <th className="p-4 font-semibold">Location</th>
-          <th className="p-4 font-semibold">Qualification</th>
+          <th className="p-4 font-semibold">Documents</th>
           <th className="p-4 font-semibold">Submitted By</th>
           <th className="p-4 font-semibold">Status</th>
           <th className="p-4 font-semibold text-right">Actions</th>
@@ -40,8 +40,6 @@ export default function VotersTable({ voters, onUpdateStatus }) {
               <div className="text-xs text-gray-500">{voter.mandal}, {voter.village}</div>
             </td>
             <td className="p-4">
-              <div className="text-gray-800">{voter.degree_qualification}</div>
-              <div className="text-xs text-gray-500">Year: {voter.graduation_year}</div>
               {(voter.degree_certificate_urls?.length ? voter.degree_certificate_urls : [voter.degree_certificate_url]).filter(Boolean).map((url, index) => (
                 <a key={url} href={url} target="_blank" rel="noreferrer" className="mr-2 inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-xs mt-1 font-medium">
                   <FileText size={12} /> <span>View Proof {index + 1}</span>

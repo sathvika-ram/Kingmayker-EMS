@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Clock, CheckCircle, XCircle, UserRound } from 'lucide-react';
 import { API } from '../utils/api';
 
-export default function EnrollmentHistory({ search = '', statusOnly = false }) {
+export default function EnrollmentHistory({ search = '', statusFilter = '' }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -15,13 +15,13 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
     fetchHistory();
     const interval = setInterval(fetchHistory, 10000);
     return () => clearInterval(interval);
-  }, [search, page]);
+  }, [search, statusFilter, page]);
 
-  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { setPage(1); }, [search, statusFilter]);
 
   const fetchHistory = async () => {
     try {
-      const res = await axios.get(`${API}/coordinator/history`, { params: { search, page, limit: 50 } });
+      const res = await axios.get(`${API}/coordinator/history`, { params: { search, status: statusFilter, page, limit: 50 } });
       setHistory(res.data.voters || []);
       setPagination(res.data.pagination || {});
       setTotalCount(Number(res.data.total_count || 0));
@@ -55,8 +55,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
     return <div className="p-8 text-center text-gray-500">Loading history...</div>;
   }
 
-  const visibleHistory = history.filter(voter => !statusOnly || ['pending', 'in_progress'].includes(voter.enrollment_status));
-  const emptyMessage = statusOnly ? 'No pending requests' : search ? 'No enrollment found for this Voter ID or Application ID' : 'No enrollments submitted yet.';
+  const emptyMessage = statusFilter ? `No ${statusFilter} enrollments` : search ? 'No enrollment found for this Voter ID or Application ID' : 'No enrollments submitted yet.';
 
   return (
     <div className="p-4">
@@ -87,7 +86,7 @@ export default function EnrollmentHistory({ search = '', statusOnly = false }) {
                 }`}>
                   {voter.enrollment_status}
                 </span>
-                {statusOnly && voter.enrollment_status === 'pending' && (
+                {!statusFilter && voter.enrollment_status === 'pending' && (
                   <select
                     value=""
                     onChange={e => {

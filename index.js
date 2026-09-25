@@ -3,7 +3,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const crypto = require('crypto');
 const multer = require('multer');
 const sharp = require('sharp');
@@ -47,7 +47,7 @@ function getDatabaseConnectionString() {
 const pool = new Pool({
     connectionString: getDatabaseConnectionString(),
     ssl: { rejectUnauthorized: false },
-    max: 5,
+    max: 10,
     idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 10000,
     keepAlive: true,
@@ -59,7 +59,12 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET.length < 32) throw new Error('JWT_SECRET must be configured with at least 32 characters.');
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 600,
+    limit: 1200,
+    keyGenerator: req => {
+        const authorization = String(req.headers.authorization || '');
+        const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+        return token ? crypto.createHash('sha256').update(token).digest('hex') : ipKeyGenerator(req.ip);
+    },
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     message: { error: 'Too many requests. Please try again later.' }
@@ -67,7 +72,7 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { files: 2, fileSize: 2 * 1024 * 1024 },
+    limits: { files: 2, fileSize: 200 * 1024 },
     fileFilter: (req, file, callback) => {
         if (/^image\/(jpeg|png|jpg)$/.test(file.mimetype)) return callback(null, true);
         callback(new Error('Only JPG, JPEG, and PNG images are allowed.'));
@@ -135,6 +140,16 @@ async function ensureVoterColumns() {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS agent_personal_email VARCHAR(255)');
     await pool.query('ALTER TABLE users ALTER COLUMN email DROP NOT NULL');
     await pool.query('ALTER TABLE voters ALTER COLUMN email DROP NOT NULL');
+    await pool.query(`
+        ALTER TABLE voters
+        DROP COLUMN IF EXISTS whatsapp_number,
+        DROP COLUMN IF EXISTS booth_number,
+        DROP COLUMN IF EXISTS form18_number,
+        DROP COLUMN IF EXISTS reference_number,
+        DROP COLUMN IF EXISTS house_number,
+        DROP COLUMN IF EXISTS street,
+        DROP COLUMN IF EXISTS ward
+    `);
     const indexStatements = [
         'CREATE INDEX IF NOT EXISTS voters_voter_id_idx ON voters (voter_id)',
         'CREATE INDEX IF NOT EXISTS voters_coordinator_id_idx ON voters (coordinator_id)',
@@ -460,7 +475,8 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         if (!normalizedVoterId || !normalizedName || !normalizedSurname || !normalizedFatherName || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !normalizedAcknowledgementNumber || !complete_address || !village || !district || !pincode) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
         }
-        if (![normalizedName, normalizedSurname, normalizedFatherName].every(value => /^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value))) return res.status(400).json({ error: 'Name fields must contain alphabets only.' });
+        if (![normalizedName, normalizedSurname, normalizedFatherName].every(value => /^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value))) return res.status(400).json({ error: 'Name fields must contain English alphabets only.' });
+        if ([complete_address, village, district, post_office, notes].some(value => value && !/^[\x00-\x7F]*$/.test(String(value)))) return res.status(400).json({ error: 'Please use English characters only.' });
         if (!/^[A-Z0-9]{10}$/.test(normalizedVoterId)) return res.status(400).json({ error: 'Enter a valid Voter ID: exactly 10 uppercase letters or numbers.' });
         if (!/^[A-Z0-9]{12}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid Application ID: exactly 12 uppercase letters or numbers.' });
         if (email && (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(String(email).trim()) || String(email).trim() !== String(email).trim().toLowerCase())) return res.status(400).json({ error: 'Enter a valid email using lowercase letters only.' });
@@ -753,14 +769,19 @@ app.get('/api/geo/mandals', async (req, res) => {
 app.get('/api/coordinator/history', authenticateToken, requireRoles('constituency_coordinator'), async (req, res) => {
     try {
         const search = String(req.query.search || '').trim();
+        const status = String(req.query.status || '').trim();
         const pagination = getPagination(req.query);
         const searchPattern = `%${search}%`;
+        const statusClause = ['pending', 'in_progress', 'approved', 'rejected'].includes(status) ? ' AND enrollment_status = $3' : '';
+        const countParams = [req.user.id, searchPattern];
+        if (statusClause) countParams.push(status);
         const countResult = await pool.query(
-            'SELECT COUNT(*)::int AS total FROM voters WHERE coordinator_id = $1 AND ($2 = \'%%\' OR voter_id ILIKE $2 OR acknowledgement_number ILIKE $2)',
-            [req.user.id, searchPattern]
+            `SELECT COUNT(*)::int AS total FROM voters WHERE coordinator_id = $1 AND ($2 = '%%' OR voter_id ILIKE $2 OR acknowledgement_number ILIKE $2)${statusClause}`,
+            countParams
         );
         const params = [req.user.id, searchPattern];
         let query = `SELECT ${safeVoterColumns} FROM voters v LEFT JOIN users u ON v.coordinator_id = u.id WHERE v.coordinator_id = $1 AND ($2 = '%%' OR v.voter_id ILIKE $2 OR v.acknowledgement_number ILIKE $2)`;
+        if (statusClause) { params.push(status); query += ' AND v.enrollment_status = $3'; }
         if (pagination.cursor) {
             params.push(pagination.cursor.created_at, pagination.cursor.id);
             query += ` AND (v.created_at, v.id) < ($${params.length - 1}, $${params.length})`;
@@ -800,7 +821,7 @@ app.patch('/api/coordinator/voters/:id/status', authenticateToken, requireRoles(
 
 app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
-    if (error?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Each upload must be 2 MB or smaller before compression.' });
+    if (error?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File size should be less than 200 KB.' });
     if (error?.code === 'LIMIT_UNEXPECTED_FILE') return res.status(400).json({ error: 'Only one photo and one degree certificate can be uploaded.' });
     if (error?.type === 'entity.too.large') return res.status(413).json({ error: 'Request payload is too large.' });
     if (error?.message?.includes('Only JPG')) return res.status(400).json({ error: error.message });
