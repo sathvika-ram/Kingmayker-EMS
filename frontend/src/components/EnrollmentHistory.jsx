@@ -104,7 +104,6 @@ export default function EnrollmentHistory({ search = '', statusFilter = '', edit
               </div>
             </div>
           ))}
-          <div className="flex items-center justify-end gap-2 py-3 text-xs font-semibold text-gray-500"><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border border-gray-300 bg-white px-3 py-1.5 disabled:opacity-40">Previous</button><span>Page {page} of {Math.max(pagination.total_pages || 1, 1)}</span><button type="button" disabled={page >= (pagination.total_pages || 1)} onClick={() => setPage(page + 1)} className="rounded border border-gray-300 bg-white px-3 py-1.5 disabled:opacity-40">Next</button></div>
         </div>
       )}
     </div>
