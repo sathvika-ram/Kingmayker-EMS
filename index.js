@@ -17,6 +17,7 @@ const allowedOrigins = Array.from(new Set([
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'https://kingmayker-ems-ten.vercel.app',
+    'https://ems.metaknacks.com',
     ...String(process.env.FRONTEND_URL || '')
         .split(',')
         .map(origin => origin.trim().replace(/\/$/, ''))
