@@ -477,7 +477,8 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         const normalizedFatherName = titleCaseName(father_name);
         const normalizedAcknowledgementNumber = String(acknowledgement_number || '').trim().toUpperCase();
         const normalizedAadhaarNumber = String(aadhaar_number || '').trim();
-        if (!normalizedName || !normalizedSurname || !normalizedFatherName || !/^[6-9]\d{9}$/.test(String(mobile_number || '')) || !gender || !normalizedAcknowledgementNumber || !complete_address || !village || !district || !pincode) {
+        const normalizedCompleteAddress = String(complete_address || '').trim() || null;
+        if (!normalizedName || !normalizedSurname || !normalizedFatherName || !/^[6-9]\d{9}$/.test(String(mobile_number || '')) || !gender || !normalizedAcknowledgementNumber || !village || !district || !pincode) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
         }
         if (![normalizedName, normalizedSurname, normalizedFatherName].every(value => /^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value))) return res.status(400).json({ error: 'Name fields must contain English alphabets only.' });
@@ -547,7 +548,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
                 village, primaryDocumentUrl, documentUrls,
                 normalizedVoterId || null, normalizedAadhaarNumber || null, gender, voterEmail,
                 normalizedAcknowledgementNumber,
-                complete_address, district, pincode, region, notes, submissionKey,
+                normalizedCompleteAddress, district, pincode, region, notes, submissionKey,
                 post_office ? String(post_office).trim() : null, photo_url || null
             ]
             );
@@ -702,7 +703,7 @@ app.post('/api/admin/coordinators/reset-password', authenticateToken, requireRol
 app.get('/api/admin/geography', authenticateToken, requireRoles('super_admin'), async (req, res) => {
     const { region, constituency, mandal, search } = req.query;
     try {
-        let query = `SELECT "Old District" AS region, "AC No" AS ac_no, "Assembly Constituency" AS assembly_constituency, "Mandal" AS mandal, "Village" AS village, "Village LGD Code" AS village_lgd_code, "Gram Panchayat" AS gram_panchayat, "Gram Panchayat LGD Code" AS gram_panchayat_lgd_code, "Pincode" AS pincode FROM master_geography WHERE 1=1`;
+        let query = `SELECT "Old District" AS region, "AC No" AS ac_no, "Assembly Constituency" AS assembly_constituency, "Mandal" AS mandal, "Village" AS village, "Village LGD Code" AS village_lgd_code, "Gram Panchayat" AS gram_panchayat, "Gram Panchayat LGD Code" AS gram_panchayat_lgd_code, "Pincode" AS pincode FROM master_geography WHERE COALESCE("Source", '') <> 'manual_mandal_option'`;
         const params = [];
         const add = (condition, value) => { if (value) { params.push(value); query += ` AND ${condition} = $${params.length}`; } };
         add('"Old District"', region); add('"Assembly Constituency"', constituency); add('"Mandal"', mandal);
