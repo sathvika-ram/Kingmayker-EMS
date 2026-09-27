@@ -132,8 +132,11 @@ async function ensureVoterColumns() {
         ADD COLUMN IF NOT EXISTS submission_key VARCHAR(120),
         ADD COLUMN IF NOT EXISTS surname VARCHAR(120),
         ADD COLUMN IF NOT EXISTS post_office VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS photo_url TEXT
+        ADD COLUMN IF NOT EXISTS photo_url TEXT,
+        ADD COLUMN IF NOT EXISTS aadhaar_number VARCHAR(12)
     `);
+    await pool.query('ALTER TABLE voters ALTER COLUMN voter_id DROP NOT NULL');
+    await pool.query('ALTER TABLE voters ALTER COLUMN date_of_birth DROP NOT NULL');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_mandal VARCHAR(120)');
@@ -448,7 +451,7 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
 app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coordinator', 'super_admin'), async (req, res) => {
     // Handling both sets of fields from the modified form
     const {
-        voter_id, voter_name, surname, father_name, date_of_birth, mobile_number, email, gender,
+        voter_id, aadhaar_number, voter_name, surname, father_name, date_of_birth, mobile_number, email, gender,
         acknowledgement_number, region,
         constituency, mandal, complete_address, village, district, pincode, degree_certificate_url, degree_certificate_urls, photo_url, notes, submission_key, post_office
     } = req.body;
@@ -473,12 +476,14 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         const normalizedSurname = titleCaseName(surname);
         const normalizedFatherName = titleCaseName(father_name);
         const normalizedAcknowledgementNumber = String(acknowledgement_number || '').trim().toUpperCase();
-        if (!normalizedVoterId || !normalizedName || !normalizedSurname || !normalizedFatherName || !date_of_birth || !/^\d{10}$/.test(String(mobile_number || '')) || !gender || !normalizedAcknowledgementNumber || !complete_address || !village || !district || !pincode) {
+        const normalizedAadhaarNumber = String(aadhaar_number || '').trim();
+        if (!normalizedName || !normalizedSurname || !normalizedFatherName || !/^[6-9]\d{9}$/.test(String(mobile_number || '')) || !gender || !normalizedAcknowledgementNumber || !complete_address || !village || !district || !pincode) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
         }
         if (![normalizedName, normalizedSurname, normalizedFatherName].every(value => /^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value))) return res.status(400).json({ error: 'Name fields must contain English alphabets only.' });
         if ([complete_address, village, district, post_office, notes].some(value => value && !/^[\x00-\x7F]*$/.test(String(value)))) return res.status(400).json({ error: 'Please use English characters only.' });
-        if (!/^[A-Z0-9]{10}$/.test(normalizedVoterId)) return res.status(400).json({ error: 'Enter a valid Voter ID: exactly 10 uppercase letters or numbers.' });
+        if (normalizedVoterId && !/^[A-Z0-9]{10}$/.test(normalizedVoterId)) return res.status(400).json({ error: 'Enter a valid Voter ID: exactly 10 uppercase letters or numbers.' });
+        if (normalizedAadhaarNumber && !/^[2-9]\d{11}$/.test(normalizedAadhaarNumber)) return res.status(400).json({ error: 'Enter a valid 12-digit Aadhaar number.' });
         if (!/^[A-Z0-9]{12}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid Application ID: exactly 12 uppercase letters or numbers.' });
         if (email && (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(String(email).trim()) || String(email).trim() !== String(email).trim().toLowerCase())) return res.status(400).json({ error: 'Enter a valid email using lowercase letters only.' });
         if (!/^\d{6}$/.test(String(pincode))) return res.status(400).json({ error: 'Check the pincode.' });
@@ -489,13 +494,14 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         const documentUrls = submittedDocumentUrls;
         const primaryDocumentUrl = documentUrls[0] || '';
 
-        const dateParts = String(date_of_birth).trim().split('-');
-        const normalizedDateOfBirth = dateParts.length === 3 && /^\d{2}-\d{2}-\d{4}$/.test(String(date_of_birth).trim())
-            ? `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`
-            : String(date_of_birth).trim();
-        const dateOfBirth = new Date(`${normalizedDateOfBirth}T00:00:00`);
-        if (Number.isNaN(dateOfBirth.getTime())) {
-            return res.status(400).json({ error: 'Invalid date of birth.' });
+        let normalizedDateOfBirth = null;
+        if (date_of_birth) {
+            const dateParts = String(date_of_birth).trim().split('-');
+            normalizedDateOfBirth = dateParts.length === 3 && /^\d{2}-\d{2}-\d{4}$/.test(String(date_of_birth).trim())
+                ? `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`
+                : String(date_of_birth).trim();
+            const dateOfBirth = new Date(`${normalizedDateOfBirth}T00:00:00`);
+            if (Number.isNaN(dateOfBirth.getTime())) return res.status(400).json({ error: 'Invalid date of birth.' });
         }
         const voterEmail = String(email || `${String(voter_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@kingmayker.com`).trim();
         const submissionKey = String(submission_key || crypto.randomUUID()).trim();
@@ -529,17 +535,17 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
                 coordinator_id, voter_name, surname, father_name, date_of_birth,
                 mobile_number, constituency, mandal,
                 village, degree_certificate_url, degree_certificate_urls, enrollment_status,
-                voter_id, gender, email,
+                voter_id, aadhaar_number, gender, email,
                 acknowledgement_number,
                 complete_address, district, pincode, region, notes, submission_key, post_office, photo_url
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending',
-                $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
             RETURNING id, coordinator_id, voter_name, surname, voter_id, enrollment_status, constituency, mandal, village, created_at`,
             [
                 numericCoordinatorId, normalizedName, normalizedSurname, normalizedFatherName, normalizedDateOfBirth,
                 mobile_number, constituency, mandal,
                 village, primaryDocumentUrl, documentUrls,
-                normalizedVoterId, gender, voterEmail,
+                normalizedVoterId || null, normalizedAadhaarNumber || null, gender, voterEmail,
                 normalizedAcknowledgementNumber,
                 complete_address, district, pincode, region, notes, submissionKey,
                 post_office ? String(post_office).trim() : null, photo_url || null
