@@ -39,7 +39,7 @@ const getInitialFormState = (user) => ({
   voter_name: '', surname: '', father_name: '', date_of_birth: '', mobile_number: '', email: '', gender: '', voter_id: '',
   region: user?.assigned_region && user.assigned_region !== 'All' ? user.assigned_region : '', constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', mandal: '', village: '', post_office: '',
   acknowledgement_number: '', aadhaar_number: '', notes: '',
-  complete_address: '', district: '', pincode: '', degree_certificate_url: '', degree_certificate_urls: [], submission_key: createSubmissionKey()
+  complete_address: '', pincode: '', degree_certificate_url: '', degree_certificate_urls: [], submission_key: createSubmissionKey()
 });
 
 export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
@@ -85,14 +85,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
 
   useEffect(() => {
     axios.get(`${API}/geo/assemblies`)
-      .then(response => {
-        const availableAssemblies = response.data || [];
-        setAssemblies(availableAssemblies);
-        setFormData(current => {
-          const selected = availableAssemblies.find(item => item.assembly_constituency === current.constituency);
-          return selected ? { ...current, region: selected.region || '', district: selected.region || '' } : current;
-        });
-      })
+      .then(response => setAssemblies(response.data || []))
       .catch(() => setError('Failed to load assembly constituencies.'));
     if (!fullAccessAgent) setFormData(current => ({ ...current, constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', mandal: '' }));
   }, [user?.assigned_constituency, fullAccessAgent]);
@@ -129,7 +122,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     }
     if (name === 'constituency') {
       const selected = assemblies.find(item => item.assembly_constituency === value);
-      setFormData(current => ({ ...current, constituency: value, region: selected?.region || '', district: selected?.region || '', mandal: '' }));
+      setFormData(current => ({ ...current, constituency: value, region: selected?.region || '', mandal: '' }));
       setFieldErrors(current => ({ ...current, constituency: validateField(name, value), region: selected?.region ? '' : 'Region could not be determined.' }));
       return;
     }
@@ -140,7 +133,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   const handleBlur = (e) => setFieldErrors(current => ({ ...current, [e.target.name]: validateField(e.target.name, formData[e.target.name]) }));
 
   const validateField = (name, value) => {
-    const required = ['voter_name', 'surname', 'father_name', 'mobile_number', 'gender', 'acknowledgement_number', 'region', 'constituency', 'mandal', 'complete_address', 'village', 'district', 'pincode'];
+    const required = ['voter_name', 'surname', 'father_name', 'mobile_number', 'gender', 'acknowledgement_number', 'region', 'constituency', 'mandal', 'complete_address', 'village', 'pincode'];
     if (required.includes(name) && !String(value || '').trim()) return 'This field is required.';
     if (name === 'mobile_number' && value && !/^[6-9]\d{9}$/.test(value)) return 'Enter a valid 10-digit mobile number.';
     if (name === 'email' && value && (!/^\S+@\S+\.[a-z]{2,}$/.test(value) || value !== value.toLowerCase())) return 'Enter a valid lowercase email.';
@@ -170,7 +163,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   const submitEnrollment = async () => {
     setLoading(true);
     try {
-      const enrollmentData = { ...formData, coordinator_id: coordinatorId || user.id, voter_name: `${formData.voter_name} ${formData.surname}`.trim() };
+      const enrollmentData = { ...formData, district: formData.region, coordinator_id: coordinatorId || user.id, voter_name: `${formData.voter_name} ${formData.surname}`.trim() };
       if (photoFile || certificateFile) {
         const uploadData = new FormData();
         if (photoFile) uploadData.append('photo', photoFile);
@@ -253,7 +246,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
         </section>
 
         <section className="space-y-4 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4 sm:p-5">
-          <h3 className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e4ebe7] pb-2 text-sm font-bold text-[#52736a]"><span>Complete address</span><span className="text-xs font-semibold text-[#1d6b5d]">Region: {formData.region || 'Select constituency'}</span></h3>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e4ebe7] pb-2"><h3 className="text-sm font-bold text-[#52736a]">Complete address</h3><p className="text-xs font-semibold tracking-wide text-[#1d6b5d]">Region: <span className="font-bold">{formData.region || 'Auto-filled'}</span></p></div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div><label className={labelClass} htmlFor="constituency"><span>Assembly constituency</span>{requiredStar}</label><select id="constituency" name="constituency" required value={formData.constituency} onChange={handleChange} onBlur={handleBlur} disabled={Boolean(user?.assigned_constituency && user.assigned_constituency !== 'All')} className={inputClass}><option value="" disabled hidden>Select constituency</option>{assemblies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select>{fieldErrors.constituency && <p className="mt-1 text-xs font-medium text-[#b44d45]" role="alert">{fieldErrors.constituency}</p>}</div>
             <Field label={<><span>Mandal</span>{requiredStar}</>} name="mandal" value={formData.mandal} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.mandal} required disabled={!formData.constituency || !mandals.length} as="select"><option value="" disabled hidden>Select mandal</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</Field>

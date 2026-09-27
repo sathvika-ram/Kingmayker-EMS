@@ -113,6 +113,7 @@ export default function SuperAdminDashboard() {
       delete next.polling_station;
       delete next.ps_si_number;
       delete next.ward;
+      delete next.district;
       return next;
     });
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sanitizedRows), 'Enrollments');
