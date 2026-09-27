@@ -53,7 +53,7 @@ export default function LeaderDashboard() {
   }, []);
   useEffect(() => {
     setConstituency(''); setMandal(''); setMandals([]); setConstituencySearch('');
-    axios.get(`${API}/geo/assemblies`, { params: region ? { region } : {} }).then(result => setConstituencies(result.data || [])).catch(() => setError('Unable to load constituencies.'));
+    axios.get(`${API}/geo/assemblies`).then(result => setConstituencies(result.data || [])).catch(() => setError('Unable to load constituencies.'));
   }, [region]);
   useEffect(() => {
     const normalizedConstituency = String(constituency || '').trim();

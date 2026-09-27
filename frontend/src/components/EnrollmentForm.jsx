@@ -9,7 +9,6 @@ const inputClass = 'w-full rounded-md border border-[#9bb4ad] bg-white px-3 py-2
 const labelClass = 'mb-1 block text-xs font-semibold text-[#52736a]';
 const requiredStar = <span className="text-red-600">*</span>;
 const createSubmissionKey = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const districts = ['Warangal', 'Hanamkonda', 'Jangaon', 'Mahabubabad', 'Jayashankar Bhupalpally', 'Mulugu', 'Khammam', 'Bhadradri Kothagudem', 'Nalgonda', 'Suryapet', 'Yadadri Bhuvanagiri', 'Siddipet'];
 const titleCaseWords = (value) => String(value || '').replace(/[^a-zA-Z\s'-]/g, '').replace(/\s+/g, ' ').replace(/(^|[\s'-])([a-z])/g, (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
 const MAX_IMAGE_BYTES = 200 * 1024;
 const MAX_FIELD_LENGTHS = {
@@ -86,7 +85,14 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
 
   useEffect(() => {
     axios.get(`${API}/geo/assemblies`)
-      .then(response => setAssemblies(response.data || []))
+      .then(response => {
+        const availableAssemblies = response.data || [];
+        setAssemblies(availableAssemblies);
+        setFormData(current => {
+          const selected = availableAssemblies.find(item => item.assembly_constituency === current.constituency);
+          return selected ? { ...current, region: selected.region || '', district: selected.region || '' } : current;
+        });
+      })
       .catch(() => setError('Failed to load assembly constituencies.'));
     if (!fullAccessAgent) setFormData(current => ({ ...current, constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', mandal: '' }));
   }, [user?.assigned_constituency, fullAccessAgent]);
@@ -123,7 +129,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     }
     if (name === 'constituency') {
       const selected = assemblies.find(item => item.assembly_constituency === value);
-      setFormData(current => ({ ...current, constituency: value, region: selected?.region || '', mandal: '' }));
+      setFormData(current => ({ ...current, constituency: value, region: selected?.region || '', district: selected?.region || '', mandal: '' }));
       setFieldErrors(current => ({ ...current, constituency: validateField(name, value), region: selected?.region ? '' : 'Region could not be determined.' }));
       return;
     }
@@ -247,15 +253,13 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
         </section>
 
         <section className="space-y-4 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4 sm:p-5">
-          <h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold text-[#52736a]">Complete address</h3>
+          <h3 className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e4ebe7] pb-2 text-sm font-bold text-[#52736a]"><span>Complete address</span><span className="text-xs font-semibold text-[#1d6b5d]">Region: {formData.region || 'Select constituency'}</span></h3>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={<><span>District</span>{requiredStar}</>} name="district" value={formData.district} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.district} required as="select"><option value="">Select district</option>{districts.map(district => <option key={district} value={district}>{district}</option>)}</Field>
             <div><label className={labelClass} htmlFor="constituency"><span>Assembly constituency</span>{requiredStar}</label><select id="constituency" name="constituency" required value={formData.constituency} onChange={handleChange} onBlur={handleBlur} disabled={Boolean(user?.assigned_constituency && user.assigned_constituency !== 'All')} className={inputClass}><option value="" disabled hidden>Select constituency</option>{assemblies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select>{fieldErrors.constituency && <p className="mt-1 text-xs font-medium text-[#b44d45]" role="alert">{fieldErrors.constituency}</p>}</div>
             <Field label={<><span>Mandal</span>{requiredStar}</>} name="mandal" value={formData.mandal} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.mandal} required disabled={!formData.constituency || !mandals.length} as="select"><option value="" disabled hidden>Select mandal</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</Field>
             <Field label={<><span>Village/Ward</span>{requiredStar}</>} name="village" value={formData.village} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.village} required placeholder="Village or ward" maxLength={MAX_FIELD_LENGTHS.village} />
             <Field label={<><span>Complete address</span>{requiredStar}</>} name="complete_address" value={formData.complete_address} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.complete_address} required as="textarea" rows={2} className={`${inputClass} min-h-20 resize-y`} placeholder="House number, street, and landmark" maxLength={MAX_FIELD_LENGTHS.complete_address} />
             <Field label={<><span>Pincode</span>{requiredStar}</>} name="pincode" type="text" inputMode="numeric" maxLength={6} pattern="[0-9]{6}" value={formData.pincode} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.pincode} required placeholder="6-digit pincode" />
-            <div><label className={labelClass} htmlFor="region">Region</label><input id="region" readOnly value={formData.region} className={`${inputClass} bg-[#edf3f0]`} placeholder="Auto-filled from constituency" /></div>
             <Field label="Post office (optional)" name="post_office" value={formData.post_office} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.post_office} placeholder="Post office" maxLength={MAX_FIELD_LENGTHS.post_office} />
             <div><label className={labelClass} htmlFor="notes">Notes <span className="font-normal text-[#849890]">(optional)</span></label><input id="notes" name="notes" value={formData.notes} onChange={handleChange} maxLength={MAX_FIELD_LENGTHS.notes} className={inputClass} placeholder="Add a note if needed" /></div>
           </div>
