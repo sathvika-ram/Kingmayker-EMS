@@ -485,7 +485,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         if ([complete_address, village, district, post_office, notes].some(value => value && !/^[\x00-\x7F]*$/.test(String(value)))) return res.status(400).json({ error: 'Please use English characters only.' });
         if (normalizedVoterId && !/^[A-Z0-9]{10}$/.test(normalizedVoterId)) return res.status(400).json({ error: 'Enter a valid Voter ID: exactly 10 uppercase letters or numbers.' });
         if (normalizedAadhaarNumber && !/^[2-9]\d{11}$/.test(normalizedAadhaarNumber)) return res.status(400).json({ error: 'Enter a valid 12-digit Aadhaar number.' });
-        if (!/^[A-Z0-9]{12}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid Application ID: exactly 12 uppercase letters or numbers.' });
+        if (!/^[A-Z0-9]{16}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid Application ID: exactly 16 uppercase letters or numbers.' });
         if (email && (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(String(email).trim()) || String(email).trim() !== String(email).trim().toLowerCase())) return res.status(400).json({ error: 'Enter a valid email using lowercase letters only.' });
         if (!/^\d{6}$/.test(String(pincode))) return res.status(400).json({ error: 'Check the pincode.' });
         const submittedDocumentUrls = Array.isArray(req.body.degree_certificate_urls)
