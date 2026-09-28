@@ -703,7 +703,7 @@ app.post('/api/admin/coordinators/reset-password', authenticateToken, requireRol
 app.get('/api/admin/geography', authenticateToken, requireRoles('super_admin'), async (req, res) => {
     const { region, constituency, mandal, search } = req.query;
     try {
-        let query = `SELECT "Old District" AS region, "AC No" AS ac_no, "Assembly Constituency" AS assembly_constituency, "Mandal" AS mandal, "Village" AS village, "Village LGD Code" AS village_lgd_code, "Gram Panchayat" AS gram_panchayat, "Gram Panchayat LGD Code" AS gram_panchayat_lgd_code, "Pincode" AS pincode FROM master_geography WHERE COALESCE("Source", '') <> 'manual_mandal_option'`;
+        let query = `SELECT "Old District" AS region, "AC No" AS ac_no, "Assembly Constituency" AS assembly_constituency, "Mandal" AS mandal, "Village" AS village, "Village LGD Code" AS village_lgd_code, "Gram Panchayat" AS gram_panchayat, "Gram Panchayat LGD Code" AS gram_panchayat_lgd_code, "Pincode" AS pincode FROM master_geography WHERE COALESCE("Source", '') NOT IN ('manual_mandal_option', 'hidden_mandal_option')`;
         const params = [];
         const add = (condition, value) => { if (value) { params.push(value); query += ` AND ${condition} = $${params.length}`; } };
         add('"Old District"', region); add('"Assembly Constituency"', constituency); add('"Mandal"', mandal);
@@ -753,7 +753,7 @@ app.get('/api/geo/assemblies', async (req, res) => {
 app.get('/api/geo/mandals', async (req, res) => {
     try {
         const { constituency } = req.query;
-        const result = await pool.query('SELECT DISTINCT "Mandal" as mandal FROM master_geography WHERE "Assembly Constituency" = $1 ORDER BY "Mandal"', [constituency]);
+        const result = await pool.query(`SELECT DISTINCT "Mandal" as mandal FROM master_geography WHERE "Assembly Constituency" = $1 AND COALESCE("Source", '') <> 'hidden_mandal_option' ORDER BY "Mandal"`, [constituency]);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
