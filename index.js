@@ -478,10 +478,10 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         const normalizedAcknowledgementNumber = String(acknowledgement_number || '').trim().toUpperCase();
         const normalizedAadhaarNumber = String(aadhaar_number || '').trim();
         const normalizedCompleteAddress = String(complete_address || '').trim() || null;
-        if (!normalizedName || !normalizedSurname || !normalizedFatherName || !/^[6-9]\d{9}$/.test(String(mobile_number || '')) || !gender || !normalizedAcknowledgementNumber || !village || !district || !pincode) {
+        if (!normalizedName || !normalizedFatherName || !/^[6-9]\d{9}$/.test(String(mobile_number || '')) || !gender || !normalizedAcknowledgementNumber || !village || !district || !pincode) {
             return res.status(400).json({ error: 'Please complete all required enrollment fields.' });
         }
-        if (![normalizedName, normalizedSurname, normalizedFatherName].every(value => /^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value))) return res.status(400).json({ error: 'Name fields must contain English alphabets only.' });
+        if (![normalizedName, normalizedFatherName, ...(normalizedSurname ? [normalizedSurname] : [])].every(value => /^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value))) return res.status(400).json({ error: 'Name fields must contain English alphabets only.' });
         if ([complete_address, village, district, post_office, notes].some(value => value && !/^[\x00-\x7F]*$/.test(String(value)))) return res.status(400).json({ error: 'Please use English characters only.' });
         if (normalizedVoterId && !/^[A-Z0-9]{10}$/.test(normalizedVoterId)) return res.status(400).json({ error: 'Enter a valid Voter ID: exactly 10 uppercase letters or numbers.' });
         if (normalizedAadhaarNumber && !/^[2-9]\d{11}$/.test(normalizedAadhaarNumber)) return res.status(400).json({ error: 'Enter a valid 12-digit Aadhaar number.' });
@@ -543,7 +543,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
                 $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
             RETURNING id, coordinator_id, voter_name, surname, voter_id, enrollment_status, constituency, mandal, village, created_at`,
             [
-                numericCoordinatorId, normalizedName, normalizedSurname, normalizedFatherName, normalizedDateOfBirth,
+                numericCoordinatorId, normalizedName, normalizedSurname || null, normalizedFatherName, normalizedDateOfBirth,
                 mobile_number, constituency, mandal,
                 village, primaryDocumentUrl, documentUrls,
                 normalizedVoterId || null, normalizedAadhaarNumber || null, gender, voterEmail,

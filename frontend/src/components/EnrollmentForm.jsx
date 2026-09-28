@@ -133,7 +133,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   const handleBlur = (e) => setFieldErrors(current => ({ ...current, [e.target.name]: validateField(e.target.name, formData[e.target.name]) }));
 
   const validateField = (name, value) => {
-    const required = ['voter_name', 'surname', 'father_name', 'mobile_number', 'gender', 'acknowledgement_number', 'region', 'constituency', 'mandal', 'village', 'pincode'];
+    const required = ['voter_name', 'father_name', 'mobile_number', 'gender', 'acknowledgement_number', 'region', 'constituency', 'mandal', 'village', 'pincode'];
     if (required.includes(name) && !String(value || '').trim()) return 'This field is required.';
     if (name === 'mobile_number' && value && !/^[6-9]\d{9}$/.test(value)) return 'Enter a valid 10-digit mobile number.';
     if (name === 'email' && value && (!/^\S+@\S+\.[a-z]{2,}$/.test(value) || value !== value.toLowerCase())) return 'Enter a valid lowercase email.';
@@ -230,7 +230,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
             <Field label={<><span>Application ID</span>{requiredStar}</>} name="acknowledgement_number" value={formData.acknowledgement_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.acknowledgement_number} required maxLength={12} placeholder="12 letters or numbers" />
             <Field label={<><span>Voter ID</span><span className="ml-1 font-normal text-[#849890]">(optional)</span></>} name="voter_id" value={formData.voter_id} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.voter_id} maxLength={10} placeholder="Enter Voter ID" />
             <Field label={<><span>Name</span>{requiredStar}</>} name="voter_name" value={formData.voter_name} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.voter_name} required placeholder="First name" maxLength={MAX_FIELD_LENGTHS.voter_name} />
-            <Field label={<><span>Surname</span>{requiredStar}</>} name="surname" value={formData.surname} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.surname} required placeholder="Surname" maxLength={MAX_FIELD_LENGTHS.surname} />
+            <Field label="Surname (if any)" name="surname" value={formData.surname} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.surname} placeholder="Surname" maxLength={MAX_FIELD_LENGTHS.surname} />
             <Field label={<><span>Father's name / Husband's name</span>{requiredStar}</>} name="father_name" value={formData.father_name} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.father_name} required placeholder="Full name" maxLength={MAX_FIELD_LENGTHS.father_name} />
             <Field label={<><span>Mobile number</span>{requiredStar}</>} name="mobile_number" type="text" inputMode="numeric" pattern="[6-9][0-9]{9}" value={formData.mobile_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.mobile_number} required maxLength={10} placeholder="10-digit mobile number" />
             <Field label={<><span>Gender</span>{requiredStar}</>} name="gender" value={formData.gender} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.gender} required as="select"><option value="" disabled hidden>Select gender</option><option>Female</option><option>Male</option><option>Other</option></Field>
