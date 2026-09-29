@@ -8,6 +8,12 @@ import { API } from '../utils/api';
 const inputClass = 'w-full rounded-md border border-[#9bb4ad] bg-white px-3 py-2.5 text-sm text-[#173b35] placeholder:text-[#a4bbb4] focus:border-[#1d6b5d] focus:outline-none focus:ring-2 focus:ring-[#1d6b5d]/20';
 const labelClass = 'mb-1 block text-xs font-semibold text-[#52736a]';
 const requiredStar = <span className="text-red-600">*</span>;
+const normalizeGeographyName = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return text;
+  const aliases = { bhupalpalle: 'Bhupalpally', bhupalapalle: 'Bhupalpally', bhupalpally: 'Bhupalpally' };
+  return aliases[text.toLowerCase()] || text;
+};
 const createSubmissionKey = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const titleCaseWords = (value) => String(value || '').replace(/[^a-zA-Z\s'-]/g, '').replace(/\s+/g, ' ').replace(/(^|[\s'-])([a-z])/g, (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
 const MAX_IMAGE_BYTES = 200 * 1024;
@@ -85,9 +91,12 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
 
   useEffect(() => {
     axios.get(`${API}/geo/assemblies`)
-      .then(response => setAssemblies(response.data || []))
+      .then(response => setAssemblies((response.data || []).map(item => ({
+        ...item,
+        assembly_constituency: normalizeGeographyName(item.assembly_constituency)
+      }))))
       .catch(() => setError('Failed to load assembly constituencies.'));
-    if (!fullAccessAgent) setFormData(current => ({ ...current, constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', mandal: '' }));
+    if (!fullAccessAgent) setFormData(current => ({ ...current, constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? normalizeGeographyName(user.assigned_constituency) : '', mandal: '' }));
   }, [user?.assigned_constituency, fullAccessAgent]);
 
   useEffect(() => {
@@ -96,7 +105,10 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     setFormData(current => ({ ...current, mandal: '' }));
     if (!normalizedConstituency) return;
     axios.get(`${API}/geo/mandals`, { params: { constituency: normalizedConstituency } })
-      .then(response => setMandals(Array.isArray(response.data) ? response.data.map(item => typeof item === 'string' ? { mandal: item } : item) : []))
+      .then(response => setMandals(Array.isArray(response.data) ? response.data.map(item => {
+        const next = typeof item === 'string' ? { mandal: item } : item;
+        return { ...next, mandal: normalizeGeographyName(next.mandal) };
+      }) : []))
       .catch(() => setError('Failed to load mandals.'));
   }, [formData.constituency]);
 

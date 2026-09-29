@@ -3,6 +3,13 @@ import axios from 'axios';
 import { X } from 'lucide-react';
 import { API } from '../utils/api';
 
+const normalizeGeographyName = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return text;
+  const aliases = { bhupalpalle: 'Bhupalpally', bhupalapalle: 'Bhupalpally', bhupalpally: 'Bhupalpally' };
+  return aliases[text.toLowerCase()] || text;
+};
+
 export default function CoordinatorModal({ onClose }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -21,7 +28,10 @@ export default function CoordinatorModal({ onClose }) {
 
   useEffect(() => {
     axios.get(`${API}/geo/assemblies`)
-      .then(response => setConstituencies(response.data || []))
+      .then(response => setConstituencies((response.data || []).map(item => ({
+        ...item,
+        assembly_constituency: normalizeGeographyName(item.assembly_constituency)
+      }))))
       .catch(() => setError('Failed to load constituencies.'));
   }, []);
 
@@ -35,7 +45,10 @@ export default function CoordinatorModal({ onClose }) {
       setMandals([]);
       if (normalized) {
         axios.get(`${API}/geo/mandals`, { params: { constituency: normalized } })
-          .then(response => setMandals(Array.isArray(response.data) ? response.data.map(item => typeof item === 'string' ? { mandal: item } : item) : []))
+          .then(response => setMandals(Array.isArray(response.data) ? response.data.map(item => {
+            const next = typeof item === 'string' ? { mandal: item } : item;
+            return { ...next, mandal: normalizeGeographyName(next.mandal) };
+          }) : []))
           .catch(() => setError('Failed to load mandals.'));
       }
     }

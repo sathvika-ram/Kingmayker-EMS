@@ -7,6 +7,13 @@ import { API } from '../utils/api';
 
 const selectClass = 'rounded-md border border-[#b5c9c1] bg-white px-3 py-2 text-sm text-[#173b35] focus:border-[#1d6b5d]';
 
+const normalizeGeographyName = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return text;
+  const aliases = { bhupalpalle: 'Bhupalpally', bhupalapalle: 'Bhupalpally', bhupalpally: 'Bhupalpally' };
+  return aliases[text.toLowerCase()] || text;
+};
+
 export default function LeaderDashboard() {
   const { user, logout } = useAuth();
   const [voters, setVoters] = useState([]);
@@ -62,14 +69,22 @@ export default function LeaderDashboard() {
   }, []);
   useEffect(() => {
     setConstituency(''); setMandal(''); setMandals([]); setConstituencySearch('');
-    axios.get(`${API}/geo/assemblies`, { params: region ? { region } : {} }).then(result => setConstituencies(result.data || [])).catch(() => setError('Unable to load constituencies.'));
+    axios.get(`${API}/geo/assemblies`, { params: region ? { region } : {} })
+      .then(result => setConstituencies((result.data || []).map(item => ({
+        ...item,
+        assembly_constituency: normalizeGeographyName(item.assembly_constituency)
+      }))))
+      .catch(() => setError('Unable to load constituencies.'));
   }, [region]);
   useEffect(() => {
     const normalizedConstituency = String(constituency || '').trim();
     if (!normalizedConstituency) { setMandals([]); return; }
     setMandal(''); setMandalSearch('');
     axios.get(`${API}/geo/mandals`, { params: { constituency: normalizedConstituency } })
-      .then(result => setMandals(Array.isArray(result.data) ? result.data.map(item => typeof item === 'string' ? { mandal: item } : item) : []))
+      .then(result => setMandals(Array.isArray(result.data) ? result.data.map(item => {
+        const normalizedItem = typeof item === 'string' ? { mandal: item } : item;
+        return { ...normalizedItem, mandal: normalizeGeographyName(normalizedItem.mandal) };
+      }) : []))
       .catch(() => setError('Unable to load mandals.'));
   }, [constituency]);
   useEffect(() => { setPage(1); }, [region, constituency, mandal, status]);

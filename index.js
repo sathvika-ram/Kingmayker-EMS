@@ -221,9 +221,15 @@ function addVoterFilters(query, params, filters) {
             query += ` AND ${condition} = $${params.length}`;
         }
     };
+    const addNameVariant = (condition, value) => {
+        const variants = getGeographyNameVariants(value);
+        if (!variants.length) return;
+        params.push(variants);
+        query += ` AND ${condition} = ANY($${params.length})`;
+    };
     add('v.region', filters.region);
-    add('v.constituency', filters.constituency);
-    add('v.mandal', filters.mandal);
+    addNameVariant('v.constituency', filters.constituency);
+    addNameVariant('v.mandal', filters.mandal);
     add('v.enrollment_status', filters.status);
     if (filters.search) {
         params.push(`%${String(filters.search).trim()}%`);
@@ -245,6 +251,31 @@ function buildCoordinatorEmail(name, constituency) {
 
 function titleCaseName(value) {
     return String(value || '').trim().toLowerCase().replace(/(^|[\s'-])([a-z])/g, (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
+}
+
+const geographyNameAliases = new Map([
+    ['bhupalpalle', 'Bhupalpally'],
+    ['bhupalapalle', 'Bhupalpally'],
+    ['bhupalpally', 'Bhupalpally']
+]);
+
+function normalizeGeographyName(value) {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) return trimmed;
+    return geographyNameAliases.get(trimmed.toLowerCase()) || trimmed;
+}
+
+function getGeographyNameVariants(value) {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) return [];
+    const variants = new Set([trimmed, normalizeGeographyName(trimmed)]);
+    const key = trimmed.toLowerCase();
+    if (['bhupalpalle', 'bhupalapalle', 'bhupalpally'].includes(key)) {
+        variants.add('Bhupalpalle');
+        variants.add('Bhupalapalle');
+        variants.add('Bhupalpally');
+    }
+    return [...variants].filter(Boolean);
 }
 
     function getAuditRequestDetails(req) {
@@ -418,14 +449,25 @@ app.post('/api/admin/create-coordinator', authenticateToken, requireRoles('super
         }
 
         if (!['All', ''].includes(selectedRegion) && !selectedConstituency) return res.status(400).json({ error: 'Select a constituency or choose All constituency access.' });
-        const regionLookup = selectedRegion || (selectedConstituency && (await pool.query('SELECT "Old District" FROM master_geography WHERE "Assembly Constituency" = $1 LIMIT 1', [selectedConstituency])).rows[0]?.['Old District']);
+        const constituencyVariants = getGeographyNameVariants(selectedConstituency);
+        const regionLookup = selectedRegion || (selectedConstituency && (await pool.query(
+            constituencyVariants.length > 1
+                ? 'SELECT "Old District" FROM master_geography WHERE "Assembly Constituency" = ANY($1) LIMIT 1'
+                : 'SELECT "Old District" FROM master_geography WHERE "Assembly Constituency" = $1 LIMIT 1',
+            constituencyVariants.length > 1 ? [constituencyVariants] : [selectedConstituency]
+        )).rows[0]?.['Old District']);
         const resolvedRegion = String(regionLookup || '').trim();
         if (!resolvedRegion) return res.status(400).json({ error: 'Select a valid region or choose All region access.' });
 
         if (selectedMandal && selectedConstituency && selectedConstituency !== 'All' && resolvedRegion !== 'All') {
+            const mandalVariants = getGeographyNameVariants(selectedMandal);
             const geography = await pool.query(
-                'SELECT 1 FROM master_geography WHERE "Old District" = $1 AND "Assembly Constituency" = $2 AND "Mandal" = $3 LIMIT 1',
-                [resolvedRegion, selectedConstituency, selectedMandal]
+                mandalVariants.length > 1
+                    ? 'SELECT 1 FROM master_geography WHERE "Old District" = $1 AND "Assembly Constituency" = ANY($2) AND "Mandal" = ANY($3) LIMIT 1'
+                    : 'SELECT 1 FROM master_geography WHERE "Old District" = $1 AND "Assembly Constituency" = $2 AND "Mandal" = $3 LIMIT 1',
+                mandalVariants.length > 1
+                    ? [resolvedRegion, constituencyVariants, mandalVariants]
+                    : [resolvedRegion, selectedConstituency, selectedMandal]
             );
             if (!geography.rowCount) return res.status(400).json({ error: 'The selected region, constituency, and mandal do not match.' });
         }
@@ -708,11 +750,22 @@ app.get('/api/admin/geography', authenticateToken, requireRoles('super_admin'), 
         let query = `SELECT "Old District" AS region, "AC No" AS ac_no, "Assembly Constituency" AS assembly_constituency, "Mandal" AS mandal, "Village" AS village, "Village LGD Code" AS village_lgd_code, "Gram Panchayat" AS gram_panchayat, "Gram Panchayat LGD Code" AS gram_panchayat_lgd_code, "Pincode" AS pincode FROM master_geography WHERE COALESCE("Source", '') NOT IN ('manual_mandal_option', 'hidden_mandal_option')`;
         const params = [];
         const add = (condition, value) => { if (value) { params.push(value); query += ` AND ${condition} = $${params.length}`; } };
-        add('"Old District"', region); add('"Assembly Constituency"', constituency); add('"Mandal"', mandal);
+        const addNameVariant = (condition, value) => {
+            const variants = getGeographyNameVariants(value);
+            if (!variants.length) return;
+            params.push(variants);
+            query += ` AND ${condition} = ANY($${params.length})`;
+        };
+        add('"Old District"', region); addNameVariant('"Assembly Constituency"', constituency); addNameVariant('"Mandal"', mandal);
         if (search) { params.push(`%${search}%`); query += ` AND ("Village" ILIKE $${params.length} OR "Mandal" ILIKE $${params.length} OR "Assembly Constituency" ILIKE $${params.length})`; }
         query += ' ORDER BY "Old District", "Assembly Constituency", "Mandal", "Village" LIMIT 10000';
         const result = await pool.query(query, params);
-        res.json({ geography: result.rows, total_count: result.rowCount });
+        const geography = result.rows.map(row => ({
+            ...row,
+            assembly_constituency: normalizeGeographyName(row.assembly_constituency),
+            mandal: normalizeGeographyName(row.mandal)
+        }));
+        res.json({ geography, total_count: result.rowCount });
     } catch (err) { res.status(500).json({ error: 'Unable to load geography explorer.' }); }
 });
 
@@ -746,7 +799,10 @@ app.get('/api/geo/assemblies', async (req, res) => {
         const result = region
             ? await pool.query('SELECT DISTINCT "Old District" as region, "AC No" as ac_no, "Assembly Constituency" as assembly_constituency FROM master_geography WHERE "Old District" = $1 ORDER BY "Assembly Constituency"', [region])
             : await pool.query('SELECT DISTINCT "Old District" as region, "AC No" as ac_no, "Assembly Constituency" as assembly_constituency FROM master_geography ORDER BY "Assembly Constituency"');
-        res.json(result.rows);
+        res.json(result.rows.map(row => ({
+            ...row,
+            assembly_constituency: normalizeGeographyName(row.assembly_constituency)
+        })));
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
     }
@@ -755,8 +811,11 @@ app.get('/api/geo/assemblies', async (req, res) => {
 app.get('/api/geo/mandals', async (req, res) => {
     try {
         const { constituency } = req.query;
-        const result = await pool.query(`SELECT DISTINCT "Mandal" as mandal FROM master_geography WHERE "Assembly Constituency" = $1 AND COALESCE("Source", '') <> 'hidden_mandal_option' ORDER BY "Mandal"`, [constituency]);
-        res.json(result.rows);
+        const variants = getGeographyNameVariants(constituency);
+        const result = variants.length > 1
+            ? await pool.query(`SELECT DISTINCT "Mandal" as mandal FROM master_geography WHERE "Assembly Constituency" = ANY($1) AND COALESCE("Source", '') <> 'hidden_mandal_option' ORDER BY "Mandal"`, [variants])
+            : await pool.query(`SELECT DISTINCT "Mandal" as mandal FROM master_geography WHERE "Assembly Constituency" = $1 AND COALESCE("Source", '') <> 'hidden_mandal_option' ORDER BY "Mandal"`, [constituency]);
+        res.json(result.rows.map(row => ({ ...row, mandal: normalizeGeographyName(row.mandal) })));
     } catch (err) {
         res.status(500).json({ error: 'Server error' });
     }
