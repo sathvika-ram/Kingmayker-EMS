@@ -45,6 +45,7 @@ export default function SuperAdminDashboard() {
   const [feedPagination, setFeedPagination] = useState({ page: 1, total_pages: 1, has_more: false });
   const [geoSearch, setGeoSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [showEnrollment, setShowEnrollment] = useState(false);
   const [enrollmentCoordinatorId, setEnrollmentCoordinatorId] = useState('');
@@ -154,30 +155,56 @@ export default function SuperAdminDashboard() {
 
   const searchFilteredVoters = voters;
 
-  const exportData = () => {
-    const workbook = XLSX.utils.book_new();
-    const sanitizedRows = searchFilteredVoters.map(row => {
-      const next = { ...row };
-      if (next.date_of_birth) next.date_of_birth = String(next.date_of_birth).slice(0, 10);
-      delete next.coordinator_id;
-      delete next.degree_certificate_url;
-      delete next.degree_certificate_urls;
-      delete next.photo_url;
-      delete next.created_at;
-      delete next.updated_at;
-      delete next.citizenship_status;
-      delete next.nationality;
-      delete next.degree_qualification;
-      delete next.graduation_year;
-      delete next.state;
-      delete next.polling_station;
-      delete next.ps_si_number;
-      delete next.ward;
-      delete next.district;
-      return next;
-    });
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sanitizedRows), 'Enrollments');
-    XLSX.writeFile(workbook, `kingmayker-enrollments-${filters.region || 'all-regions'}.xlsx`);
+  const exportData = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const params = {
+        region: filters.region,
+        constituency: filters.constituency,
+        mandal: filters.mandal,
+        status: filters.status,
+        search: String(filters.search || '').trim(),
+        limit: 100
+      };
+      const allRows = [];
+      let cursor = null;
+      do {
+        const result = await axios.get(`${API}/admin/enrollments`, { params: { ...params, ...(cursor ? { cursor } : {}) } });
+        allRows.push(...(result.data.voters || []));
+        const pagination = result.data.pagination || {};
+        if (pagination.has_more && !pagination.next_cursor) throw new Error('The export could not retrieve the next page.');
+        cursor = pagination.next_cursor || null;
+      } while (cursor);
+
+      const workbook = XLSX.utils.book_new();
+      const sanitizedRows = allRows.map(row => {
+        const next = { ...row };
+        if (next.date_of_birth) next.date_of_birth = String(next.date_of_birth).slice(0, 10);
+        delete next.coordinator_id;
+        delete next.degree_certificate_url;
+        delete next.degree_certificate_urls;
+        delete next.photo_url;
+        delete next.created_at;
+        delete next.updated_at;
+        delete next.citizenship_status;
+        delete next.nationality;
+        delete next.degree_qualification;
+        delete next.graduation_year;
+        delete next.state;
+        delete next.polling_station;
+        delete next.ps_si_number;
+        delete next.ward;
+        delete next.district;
+        return next;
+      });
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sanitizedRows), 'Enrollments');
+      XLSX.writeFile(workbook, `kingmayker-enrollments-${filters.region || 'all-regions'}.xlsx`);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Unable to export all matching enrollments.');
+    } finally {
+      setExporting(false);
+    }
   };
   const go = id => { const path = id === 'overview' ? 'analytics' : id === 'audit' ? 'audit-logs' : id; navigate(`/admin/${path}`); setMobileOpen(false); };
   const filteredMetrics = {

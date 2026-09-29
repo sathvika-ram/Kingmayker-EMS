@@ -29,6 +29,7 @@ export default function LeaderDashboard() {
   const [activeView, setActiveView] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [summary, setSummary] = useState({ metrics: {}, regional_breakdown: [], daily_trend: [] });
   const [page, setPage] = useState(1);
@@ -127,31 +128,50 @@ export default function LeaderDashboard() {
     return { name: item.mandal, total: rows.length, accepted, rate: rows.length ? Math.round((accepted / rows.length) * 100) : 0 };
   });
 
-  const exportData = () => {
-    const workbook = XLSX.utils.book_new();
-    const geography = [region, constituency, mandal].filter(Boolean).join('-') || 'all-regions';
-    const filteredRows = voters.map(row => {
-      const next = { ...row };
-      if (next.date_of_birth) next.date_of_birth = String(next.date_of_birth).slice(0, 10);
-      delete next.coordinator_id;
-      delete next.degree_certificate_url;
-      delete next.degree_certificate_urls;
-      delete next.photo_url;
-      delete next.created_at;
-      delete next.updated_at;
-      delete next.citizenship_status;
-      delete next.nationality;
-      delete next.degree_qualification;
-      delete next.graduation_year;
-      delete next.state;
-      delete next.polling_station;
-      delete next.ps_si_number;
-      delete next.ward;
-      delete next.district;
-      return next;
-    });
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(filteredRows), 'Selected Geography');
-    XLSX.writeFile(workbook, `kingmayker-${geography.toLowerCase().replace(/\s+/g, '-')}.xlsx`);
+  const exportData = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const params = { region, constituency, mandal, status, limit: 100 };
+      const allRows = [];
+      let cursor = null;
+      do {
+        const result = await axios.get(`${API}/admin/voters`, { params: { ...params, ...(cursor ? { cursor } : {}) } });
+        allRows.push(...(result.data.voters || []));
+        const nextPage = result.data.pagination || {};
+        if (nextPage.has_more && !nextPage.next_cursor) throw new Error('The export could not retrieve the next page.');
+        cursor = nextPage.next_cursor || null;
+      } while (cursor);
+
+      const workbook = XLSX.utils.book_new();
+      const geography = [region, constituency, mandal].filter(Boolean).join('-') || 'all-regions';
+      const filteredRows = allRows.map(row => {
+        const next = { ...row };
+        if (next.date_of_birth) next.date_of_birth = String(next.date_of_birth).slice(0, 10);
+        delete next.coordinator_id;
+        delete next.degree_certificate_url;
+        delete next.degree_certificate_urls;
+        delete next.photo_url;
+        delete next.created_at;
+        delete next.updated_at;
+        delete next.citizenship_status;
+        delete next.nationality;
+        delete next.degree_qualification;
+        delete next.graduation_year;
+        delete next.state;
+        delete next.polling_station;
+        delete next.ps_si_number;
+        delete next.ward;
+        delete next.district;
+        return next;
+      });
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(filteredRows), 'Selected Geography');
+      XLSX.writeFile(workbook, `kingmayker-${geography.toLowerCase().replace(/\s+/g, '-')}.xlsx`);
+    } catch (error) {
+      setError(error.response?.data?.error || error.message || 'Unable to export all matching enrollments.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const navigate = (view) => { setActiveView(view); setSidebarOpen(false); };
