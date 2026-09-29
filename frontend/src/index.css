@@ -122,19 +122,20 @@
 
 .login-page {
   min-height: 100vh;
+  min-height: 100svh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 56px;
+  padding: 32px;
   background: linear-gradient(135deg, #e8efec, #dce8e3);
 }
 
 .login-shell {
   position: relative;
-  width: min(1120px, calc(100vw - 80px));
+  width: min(1320px, 100%);
   min-height: 700px;
   display: grid;
-  grid-template-columns: 1.28fr 0.72fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
   background: linear-gradient(135deg, rgba(9, 21, 31, 0.78), rgba(12, 42, 37, 0.66));
   border: 1px solid rgba(150, 214, 255, 0.18);
   border-radius: 30px;
@@ -247,9 +248,9 @@
 
 .login-motto h1 {
   margin: 0;
-  font-size: clamp(2.4rem, 4vw, 4.5rem);
-  line-height: 0.96;
-  letter-spacing: -0.07em;
+  font-size: 3rem;
+  line-height: 1.04;
+  letter-spacing: 0;
   font-weight: 800;
   text-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
 }
@@ -422,24 +423,42 @@
 
 @media (max-width: 900px) {
   .login-page {
+    align-items: flex-start;
     padding: 16px;
   }
 
   .login-shell {
+    width: min(680px, 100%);
     grid-template-columns: 1fr;
     min-height: auto;
     border-radius: 22px;
   }
 
   .login-visual {
-    min-height: 320px;
+    min-height: 0;
+    background: #102d29;
+  }
+
+  .login-visual::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 205px;
+    background:
+      linear-gradient(180deg, rgba(7, 14, 13, 0.08), rgba(7, 14, 13, 0.12) 68%, #102d29),
+      url('/KCR1.webp') 60% 18%/cover no-repeat;
+  }
+
+  .login-visual__overlay {
+    display: none;
   }
 
   .login-visual__content {
-    padding: 24px 20px 28px;
-    min-height: 320px;
-    justify-content: flex-end;
-    gap: 18px;
+    height: auto;
+    min-height: 0;
+    padding: 224px 28px 30px;
+    justify-content: flex-start;
+    gap: 0;
   }
 
   .login-brand-badge {
@@ -455,16 +474,22 @@
   }
 
   .login-motto h1 {
-    font-size: clamp(2.1rem, 10vw, 3rem);
+    max-width: 18ch;
+    font-size: 2.4rem;
+    line-height: 1.08;
   }
 
   .login-quote {
+    margin: 14px 0 0;
     font-size: 0.98rem;
+    line-height: 1.55;
     max-width: 100%;
   }
 
   .login-form-panel {
     padding: 18px 16px 24px;
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .login-card {
@@ -483,12 +508,16 @@
   }
 
   .login-visual {
-    min-height: 280px;
+    min-height: 0;
+  }
+
+  .login-visual::before {
+    height: 168px;
+    background-position: 60% 18%;
   }
 
   .login-visual__content {
-    padding: 18px 16px 22px;
-    gap: 14px;
+    padding: 186px 20px 24px;
   }
 
   .login-brand-badge {
@@ -504,8 +533,10 @@
   }
 
   .login-motto h1 {
-    font-size: clamp(1.8rem, 11vw, 2.5rem);
-    line-height: 1.05;
+    max-width: 16ch;
+    font-size: 1.9rem;
+    line-height: 1.12;
+    letter-spacing: 0;
   }
 
   .login-kicker {
@@ -513,6 +544,7 @@
   }
 
   .login-quote {
+    margin-top: 12px;
     font-size: 0.92rem;
     line-height: 1.6;
   }
