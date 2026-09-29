@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
@@ -28,21 +28,30 @@ export default function LeaderDashboard() {
   const [pagination, setPagination] = useState({ total_pages: 1, has_more: false });
   const [regionalStats, setRegionalStats] = useState([]);
   const [regionalMetric, setRegionalMetric] = useState('total');
+  const loadRequestRef = useRef(null);
 
-  const loadVoters = async () => {
-    setLoading(true);
+  const loadVoters = async (silent = false) => {
+    loadRequestRef.current?.abort();
+    const controller = new AbortController();
+    loadRequestRef.current = controller;
+    if (!silent) setLoading(true);
     try {
       const params = { region, constituency, mandal, status, page, limit: 50 };
       const [result, summaryResult] = await Promise.all([
-        axios.get(`${API}/admin/voters`, { params }),
-        axios.get(`${API}/admin/summary`, { params })
+        axios.get(`${API}/admin/voters`, { params, signal: controller.signal }),
+        axios.get(`${API}/admin/summary`, { params, signal: controller.signal })
       ]);
       setVoters(result.data.voters || []);
       setPagination(result.data.pagination || {});
       setSummary(summaryResult.data || {});
       setError('');
-    } catch { setError('Unable to load live enrollment analytics.'); }
-    finally { setLoading(false); }
+    } catch (error) { if (!axios.isCancel(error)) setError('Unable to load live enrollment analytics.'); }
+    finally {
+      if (loadRequestRef.current === controller) {
+        loadRequestRef.current = null;
+        if (!silent) setLoading(false);
+      }
+    }
   };
 
   useEffect(() => { axios.get(`${API}/geo/regions`).then(result => setRegions(result.data || [])).catch(() => setError('Unable to load regions.')); }, []);
@@ -66,9 +75,17 @@ export default function LeaderDashboard() {
   useEffect(() => { setPage(1); }, [region, constituency, mandal, status]);
   useEffect(() => { if (activeView !== 'overview') requestAnimationFrame(() => document.getElementById(activeView)?.scrollIntoView({ behavior: 'smooth', block: 'start' })); }, [activeView]);
   useEffect(() => { loadVoters(); }, [region, constituency, mandal, status, page]);
+  useEffect(() => () => loadRequestRef.current?.abort(), []);
   useEffect(() => {
-    const interval = setInterval(loadVoters, 30000);
-    return () => clearInterval(interval);
+    const refreshVisibleDashboard = () => {
+      if (document.visibilityState === 'visible') loadVoters(true);
+    };
+    const interval = setInterval(refreshVisibleDashboard, 30000);
+    document.addEventListener('visibilitychange', refreshVisibleDashboard);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshVisibleDashboard);
+    };
   }, [region, constituency, mandal, status, page]);
 
   const approved = Number(summary.metrics?.approved || 0);
@@ -140,7 +157,7 @@ export default function LeaderDashboard() {
         </nav>
       </aside>
       {sidebarOpen && <button type="button" aria-label="Close navigation overlay" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-30 bg-[#173b35]/40 lg:hidden" />}
-      <main className="min-w-0 flex-1 space-y-5 p-4 sm:p-8" id="overview"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b9b3a]">Leader dashboard</p><h2 className="mt-1 text-2xl font-bold">Regional performance</h2><p className="mt-1 text-sm text-[#64736f]">Live enrollment intelligence from the voter database.</p></div><div className="flex gap-2"><button onClick={loadVoters} title="Refresh data" aria-label="Refresh data" className="rounded-md border border-[#b5c9c1] bg-white p-2 text-[#1d6b5d]"><RefreshCw size={17} /></button><button onClick={exportData} className="flex items-center gap-2 rounded-md bg-[#173b35] px-3 py-2 text-sm font-semibold text-white"><Download size={16} /> Selected geography XLS</button></div></div>
+      <main className="min-w-0 flex-1 space-y-5 p-4 sm:p-8" id="overview"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b9b3a]">Leader dashboard</p><h2 className="mt-1 text-2xl font-bold">Regional performance</h2><p className="mt-1 text-sm text-[#64736f]">Live enrollment intelligence from the voter database.</p></div><div className="flex gap-2"><button onClick={() => loadVoters()} title="Refresh data" aria-label="Refresh data" className="rounded-md border border-[#b5c9c1] bg-white p-2 text-[#1d6b5d]"><RefreshCw size={17} /></button><button onClick={exportData} className="flex items-center gap-2 rounded-md bg-[#173b35] px-3 py-2 text-sm font-semibold text-white"><Download size={16} /> Selected geography XLS</button></div></div>
         <section className="rounded-lg border border-[#e4ebe7] bg-white p-4 shadow-sm" id="geography"><div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#52736a]"><Map size={16} /> Executive filters</div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><select value={region} onChange={event => setRegion(event.target.value)} className={selectClass}><option value="">All Regions</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</select><select value={constituency} onChange={event => setConstituency(event.target.value)} className={selectClass}><option value="">Select constituency</option>{constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select><select value={mandal} onChange={event => setMandal(event.target.value)} disabled={!constituency} className={selectClass}><option value="">All Mandals</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</select><select value={status} onChange={event => setStatus(event.target.value)} className={selectClass}><option value="">All Statuses</option><option value="approved">Approved</option><option value="pending">Pending</option><option value="rejected">Rejected</option></select></div></section>
         {error && <div className="rounded-md border border-[#f0c8c2] bg-[#fff3f1] p-3 text-sm text-[#a84b43]">{error}</div>}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Metric icon={<Users size={19} />} label="Total enrollments" value={total} /><Metric icon={<BarChart3 size={19} />} label="Today's velocity" value={`+${today}`} /><Metric icon={<CheckCircle size={19} />} label="Verification approved" value={`${approvalRate}%`} /><Metric icon={<Clock3 size={19} />} label="Pending review" value={pending} /></div>
@@ -186,7 +203,25 @@ function RegionalAnalytics({ stats, metric, setMetric, onBack }) {
 function ACAnalytics({ onBack }) {
   const [rows, setRows] = useState([]);
   const [search, setSearch] = useState('');
-  useEffect(() => { Promise.all(acReference.map(reference => axios.get(`${API}/admin/summary`, { params: { constituency: reference.name } }).then(result => ({ ...reference, ...result.data.metrics })))).then(setRows).catch(() => setRows(acReference)); }, []);
+  useEffect(() => {
+    let isActive = true;
+    const loadRows = async () => {
+      const loadedRows = [];
+      try {
+        for (let index = 0; index < acReference.length; index += 4) {
+          const batch = await Promise.all(acReference.slice(index, index + 4).map(reference =>
+            axios.get(`${API}/admin/summary`, { params: { constituency: reference.name } }).then(result => ({ ...reference, ...result.data.metrics }))
+          ));
+          loadedRows.push(...batch);
+          if (isActive) setRows([...loadedRows]);
+        }
+      } catch {
+        if (isActive) setRows(acReference);
+      }
+    };
+    loadRows();
+    return () => { isActive = false; };
+  }, []);
   const suggestions = search.trim().length >= 3 ? rows.filter(row => row.name.toLowerCase().includes(search.trim().toLowerCase())) : [];
   const visibleRows = search.trim().length >= 3 ? suggestions : rows;
   return <section id="ac-analytics" className="rounded-lg border border-[#e4ebe7] bg-white p-5 shadow-sm"><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">AC analytics</h2><p className="mt-1 text-sm text-[#64736f]">Approval progress against constituency targets.</p></div><button type="button" onClick={onBack} className="inline-flex items-center gap-1 rounded border border-[#b5c9c1] px-3 py-1.5 text-xs font-semibold"><ArrowLeft size={14} /> Overview</button></div><div className="relative mb-5 max-w-xl"><Search size={15} className="absolute left-3 top-3 text-[#64736f]" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search constituency (3 letters)" className={`${selectClass} w-full pl-9`} />{suggestions.length > 0 && <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded border border-[#b5c9c1] bg-white py-1 shadow-lg">{suggestions.slice(0, 8).map(row => <button type="button" key={row.name} onClick={() => setSearch(row.name)} className="block w-full px-3 py-2 text-left text-sm hover:bg-[#eef6f2]">{row.name}</button>)}</div>}</div><div className="max-h-[360px] space-y-4 overflow-y-auto pr-2">{visibleRows.map(row => { const approved = Number(row.approved || 0); const progress = Math.min(100, row.target ? approved / row.target * 100 : 0); return <div key={row.name}><div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-sm"><span className="font-semibold">{row.name}</span><span className="text-xs text-[#64736f]">{row.pollingStations} polling stations · {approved.toLocaleString()} approved / {row.target.toLocaleString()} target</span></div><div className="h-3 rounded-full bg-[#e4ebe7]"><div className="h-3 rounded-full bg-[#2f8068] transition-all" style={{ width: `${progress}%` }} /></div></div>; })}</div></section>;

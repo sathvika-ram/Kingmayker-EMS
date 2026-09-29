@@ -52,7 +52,7 @@ export default function Login() {
           <div className="login-card">
             <div className="login-card__header">
               <div className="login-card__logo-wrap">
-                <img src="/KCR.png" alt="KCR" className="login-card__logo" />
+                <img src="/parl.jfif" alt="Rakesh Reddy" className="login-card__logo" />
               </div>
               <p className="login-eyebrow">Secure access</p>
               <h2>Sign in to your workspace</h2>

@@ -16,6 +16,8 @@ app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 const allowedOrigins = Array.from(new Set([
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
     'https://kingmayker-ems-ten.vercel.app',
     'https://ems.metaknacks.com',
     ...String(process.env.FRONTEND_URL || '')
