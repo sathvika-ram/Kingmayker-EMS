@@ -25,8 +25,8 @@ export default function CoordinatorDashboard() {
           <img src="/rakeshreddy.png" alt="EMS" className="coordinator-logo" />
           <div className="min-w-0">
             <div className="app-brand-wrap">
-              <p className="app-brand-text app-brand-desktop">KINGMAYKER EMS</p>
-              <p className="app-brand-text app-brand-mobile">EMS</p>
+              <p className="app-brand-text app-brand-desktop">EMS BY METAKNACKS</p>
+              <p className="app-brand-text app-brand-mobile">EMS BY METAKNACKS</p>
             </div>
             {user?.assigned_constituency && user.assigned_constituency !== 'All' && (
               <p className="coordinator-assignment">{user.assigned_constituency.replace(/\s*\([^)]*\)/g, '')} </p>
