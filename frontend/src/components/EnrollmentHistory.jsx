@@ -7,24 +7,32 @@ export default function EnrollmentHistory({ search = '', statusFilter = '', edit
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ total_pages: 1 });
   const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     fetchHistory();
     const interval = setInterval(fetchHistory, 10000);
     return () => clearInterval(interval);
-  }, [search, statusFilter, page]);
-
-  useEffect(() => { setPage(1); }, [search, statusFilter]);
+  }, [search, statusFilter]);
 
   const fetchHistory = async () => {
     try {
-      const res = await axios.get(`${API}/coordinator/history`, { params: { search, status: statusFilter, page, limit: 50 } });
-      setHistory(res.data.voters || []);
-      setPagination(res.data.pagination || {});
-      setTotalCount(Number(res.data.total_count || 0));
+      const allHistory = [];
+      let cursor = null;
+      let resultTotal = 0;
+      do {
+        const res = await axios.get(`${API}/coordinator/history`, {
+          params: { search, status: statusFilter, limit: 100, ...(cursor ? { cursor } : {}) }
+        });
+        allHistory.push(...(res.data.voters || []));
+        resultTotal = Number(res.data.total_count || 0);
+        const pagination = res.data.pagination || {};
+        if (pagination.has_more && !pagination.next_cursor) throw new Error('Unable to load the next history page.');
+        cursor = pagination.next_cursor || null;
+      } while (cursor);
+      setHistory(allHistory);
+      setTotalCount(resultTotal);
+      setError('');
     } catch (err) {
       setError('Failed to load history');
     } finally {
@@ -37,7 +45,7 @@ export default function EnrollmentHistory({ search = '', statusFilter = '', edit
     if (!confirmed) return;
     try {
       await axios.patch(`${API}/coordinator/voters/${id}/status`, { status });
-      setHistory(current => current.map(voter => voter.id === id ? { ...voter, enrollment_status: status } : voter));
+      await fetchHistory();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to update enrollment status');
     }
@@ -60,7 +68,7 @@ export default function EnrollmentHistory({ search = '', statusFilter = '', edit
 
   return (
     <div className="p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold text-gray-800">Submission History</h2><div className="rounded-md bg-[#eef8f0] px-3 py-2 text-sm font-bold text-[#1d6b5d]">Total enrollments: {totalCount.toLocaleString()}</div></div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold text-gray-800">Submission History</h2><div className="rounded-md bg-[#eef8f0] px-3 py-2 text-sm font-bold text-[#1d6b5d]">{statusFilter ? `${statusFilter.charAt(0).toUpperCase()}${statusFilter.slice(1)} enrollments` : 'Total enrollments'}: {totalCount.toLocaleString()}</div></div>
       {error && <div className="text-red-500 mb-4">{error}</div>}
       
       {visibleHistory.length === 0 ? (

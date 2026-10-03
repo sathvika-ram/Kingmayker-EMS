@@ -42,7 +42,7 @@ const compressImage = async (file) => {
 };
 const isFullAccessAgent = (user) => user?.role === 'constituency_coordinator' && (user?.assigned_region === 'All' || user?.assigned_constituency === 'All' || !user?.assigned_region || !user?.assigned_constituency);
 const getInitialFormState = (user) => ({
-  voter_name: '', surname: '', father_name: '', date_of_birth: '', mobile_number: '', email: '', gender: '', voter_id: '',
+  voter_name: '', surname: '', father_name: '', mobile_number: '', email: '', gender: '', voter_id: '',
   region: user?.assigned_region && user.assigned_region !== 'All' ? user.assigned_region : '', constituency: user?.assigned_constituency && user.assigned_constituency !== 'All' ? user.assigned_constituency : '', mandal: '', village: '', post_office: '',
   acknowledgement_number: '', aadhaar_number: '', notes: '',
   complete_address: '', pincode: '', degree_certificate_url: '', degree_certificate_urls: [], submission_key: createSubmissionKey()
@@ -53,13 +53,16 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   const fullAccessAgent = isFullAccessAgent(user);
   const initialFormState = getInitialFormState(user);
   const [formData, setFormData] = useState(() => {
-    try { return { ...initialFormState, ...JSON.parse(localStorage.getItem(`enrollment-draft-${user?.id}`) || '{}') }; }
+    try {
+      const draft = JSON.parse(localStorage.getItem(`enrollment-draft-${user?.id}`) || '{}');
+      const currentFields = Object.fromEntries(Object.entries(draft).filter(([key]) => Object.prototype.hasOwnProperty.call(initialFormState, key)));
+      return { ...initialFormState, ...currentFields };
+    }
     catch { return initialFormState; }
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [submittedId, setSubmittedId] = useState(null);
   const [photoFile, setPhotoFile] = useState(null);
   const [certificateFile, setCertificateFile] = useState(null);
   const [assemblies, setAssemblies] = useState([]);
@@ -122,7 +125,6 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     }
     if (name === 'voter_id' || name === 'acknowledgement_number') value = value.replace(/[^a-z0-9]/gi, '').toUpperCase();
     if (name === 'voter_name' || name === 'surname' || name === 'father_name') value = titleCaseWords(value);
-    if (name === 'email') value = value.toLowerCase();
     if (name === 'mobile_number') value = value.replace(/\D/g, '').slice(0, 10);
     if (name === 'aadhaar_number') value = value.replace(/\D/g, '').slice(0, 12);
     if (name === 'pincode') value = value.replace(/\D/g, '').slice(0, 6);
@@ -145,7 +147,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
   const handleBlur = (e) => setFieldErrors(current => ({ ...current, [e.target.name]: validateField(e.target.name, formData[e.target.name]) }));
 
   const validateField = (name, value) => {
-    const required = ['voter_name', 'father_name', 'mobile_number', 'gender', 'acknowledgement_number', 'region', 'constituency', 'mandal', 'village', 'pincode'];
+    const required = ['voter_name', 'father_name', 'mobile_number', 'gender', 'acknowledgement_number', 'region', 'constituency', 'mandal', 'village'];
     if (required.includes(name) && !String(value || '').trim()) return 'This field is required.';
     if (name === 'mobile_number' && value && !/^[6-9]\d{9}$/.test(value)) return 'Enter a valid 10-digit mobile number.';
     if (name === 'email' && value && (!/^\S+@\S+\.[a-z]{2,}$/.test(value) || value !== value.toLowerCase())) return 'Enter a valid lowercase email.';
@@ -189,8 +191,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
           throw new Error(uploadError.response?.data?.error || 'Unable to upload the selected images. Please try again.');
         }
       }
-      const response = await axios.post(`${API}/voters/enroll`, enrollmentData);
-      setSubmittedId(response.data.voter?.id);
+      await axios.post(`${API}/voters/enroll`, enrollmentData);
       setSuccess(true);
       setFormData(initialFormState);
       localStorage.removeItem(`enrollment-draft-${user.id}`);
@@ -221,7 +222,6 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     <div className="flex h-full flex-col items-center justify-center space-y-4 p-8 text-center">
       <CheckCircle className="h-16 w-16 text-[#2f7c57]" />
       <h2 className="text-2xl font-bold text-[#173b35]">Enrollment Submitted</h2>
-      <p className="text-sm font-semibold text-[#1d6b5d]">Application No: {submittedId}</p>
       <p className="text-sm text-[#64736f]">The enrollment is in progress and ready for status review.</p>
       <button onClick={() => setSuccess(false)} className="mt-4 rounded-md bg-[#173b35] px-6 py-2.5 font-medium text-white hover:bg-[#28584e]">Submit another</button>
     </div>
@@ -246,14 +246,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
             <Field label={<><span>Father's name / Husband's name</span>{requiredStar}</>} name="father_name" value={formData.father_name} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.father_name} required placeholder="Full name" maxLength={MAX_FIELD_LENGTHS.father_name} />
             <Field label={<><span>Mobile number</span>{requiredStar}</>} name="mobile_number" type="text" inputMode="numeric" pattern="[6-9][0-9]{9}" value={formData.mobile_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.mobile_number} required maxLength={10} placeholder="10-digit mobile number" />
             <Field label={<><span>Gender</span>{requiredStar}</>} name="gender" value={formData.gender} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.gender} required as="select"><option value="" disabled hidden>Select gender</option><option>Female</option><option>Male</option><option>Other</option></Field>
-          </div>
-        </section>
-
-        <section className="space-y-4 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4 sm:p-5">
-          <h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold text-[#52736a]">Additional details <span className="font-normal text-[#849890]">(optional)</span></h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Aadhaar number" name="aadhaar_number" type="text" inputMode="numeric" pattern="[2-9][0-9]{11}" value={formData.aadhaar_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.aadhaar_number} maxLength={12} placeholder="12-digit Aadhaar number" />
-            <Field label="Personal email" name="email" type="email" value={formData.email} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.email} placeholder="name@example.com" />
+            <Field label="Aadhaar number (optional)" name="aadhaar_number" type="text" inputMode="numeric" pattern="[2-9][0-9]{11}" value={formData.aadhaar_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.aadhaar_number} maxLength={12} placeholder="12-digit Aadhaar number" />
           </div>
         </section>
 
@@ -264,13 +257,20 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
             <Field label={<><span>Mandal</span>{requiredStar}</>} name="mandal" value={formData.mandal} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.mandal} required disabled={!formData.constituency || !mandals.length} as="select"><option value="" disabled hidden>Select mandal</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</Field>
             <Field label={<><span>Village/Ward/Division</span>{requiredStar}</>} name="village" value={formData.village} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.village} required placeholder="Village, ward, or division" maxLength={MAX_FIELD_LENGTHS.village} />
             <Field label="Complete address (optional)" name="complete_address" value={formData.complete_address} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.complete_address} as="textarea" rows={2} className={`${inputClass} min-h-20 resize-y`} placeholder="House number, street, and landmark" maxLength={MAX_FIELD_LENGTHS.complete_address} />
-            <Field label={<><span>Pincode</span>{requiredStar}</>} name="pincode" type="text" inputMode="numeric" maxLength={6} pattern="[0-9]{6}" value={formData.pincode} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.pincode} required placeholder="6-digit pincode" />
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4 sm:p-5">
+          <h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold text-[#52736a]">Additional details <span className="font-normal text-[#849890]">(optional)</span></h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Personal email" name="email" type="email" value={formData.email} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.email} placeholder="name@example.com" />
+            <Field label="Pincode (optional)" name="pincode" type="text" inputMode="numeric" maxLength={6} pattern="[0-9]{6}" value={formData.pincode} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.pincode} placeholder="6-digit pincode" />
             <Field label="Post office (optional)" name="post_office" value={formData.post_office} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.post_office} placeholder="Post office" maxLength={MAX_FIELD_LENGTHS.post_office} />
             <div><label className={labelClass} htmlFor="notes">Notes <span className="font-normal text-[#849890]">(optional)</span></label><input id="notes" name="notes" value={formData.notes} onChange={handleChange} maxLength={MAX_FIELD_LENGTHS.notes} className={inputClass} placeholder="Add a note if needed" /></div>
           </div>
         </section>
 
-        <section className="space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold text-[#52736a]">Supporting uploads <span className="font-normal text-[#849890]">(optional, max 200 KB each)</span></h3><div className="grid gap-4 sm:grid-cols-2"><UploadBox label="Photo" file={photoFile} onChange={event => handleImageChange(event, 'photo')} onRemove={() => setPhotoFile(null)} /><UploadBox label="Degree certificate" file={certificateFile} onChange={event => handleImageChange(event, 'certificate')} onRemove={() => setCertificateFile(null)} /></div><p className="text-xs text-[#849890]">Accepted formats: JPG, JPEG, PNG. Images are compressed before secure upload.</p></section>
+        <section className="hidden space-y-3 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4"><h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold text-[#52736a]">Supporting uploads <span className="font-normal text-[#849890]">(optional, max 200 KB each)</span></h3><div className="grid gap-4 sm:grid-cols-2"><UploadBox label="Photo" file={photoFile} onChange={event => handleImageChange(event, 'photo')} onRemove={() => setPhotoFile(null)} /><UploadBox label="Degree certificate" file={certificateFile} onChange={event => handleImageChange(event, 'certificate')} onRemove={() => setCertificateFile(null)} /></div><p className="text-xs text-[#849890]">Accepted formats: JPG, JPEG, PNG. Images are compressed before secure upload.</p></section>
         <button type="submit" disabled={loading} aria-busy={loading} className="w-full rounded-md bg-[#173b35] px-4 py-3 font-bold text-white shadow-sm transition hover:bg-[#28584e] disabled:cursor-not-allowed disabled:opacity-60">{loading ? <span className="mx-auto block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" aria-label="Submitting enrollment" /> : 'Submit enrollment'}</button>
       </form>
     </div>

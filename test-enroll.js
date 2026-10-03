@@ -7,7 +7,6 @@ async function test() {
                 coordinator_id: "4", // Test as string
                 voter_name: 'Test Voter',
                 father_name: 'Test Father',
-                date_of_birth: '1990-01-01',
                 mobile_number: '1234567890',
                 citizenship_status: true,
                 constituency: 'Warangal',
