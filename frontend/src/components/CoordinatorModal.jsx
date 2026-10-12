@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { X } from 'lucide-react';
 import { API } from '../utils/api';
+import { ensureKhilaWarangalMandal } from '../utils/geography';
 
 const normalizeGeographyName = (value) => {
   const text = String(value ?? '').trim();
@@ -45,10 +46,13 @@ export default function CoordinatorModal({ onClose }) {
       setMandals([]);
       if (normalized) {
         axios.get(`${API}/geo/mandals`, { params: { constituency: normalized } })
-          .then(response => setMandals(Array.isArray(response.data) ? response.data.map(item => {
-            const next = typeof item === 'string' ? { mandal: item } : item;
-            return { ...next, mandal: normalizeGeographyName(next.mandal) };
-          }) : []))
+          .then(response => {
+            const options = Array.isArray(response.data) ? response.data.map(item => {
+              const next = typeof item === 'string' ? { mandal: item } : item;
+              return { ...next, mandal: normalizeGeographyName(next.mandal) };
+            }) : [];
+            setMandals(ensureKhilaWarangalMandal(normalized, options));
+          })
           .catch(() => setError('Failed to load mandals.'));
       }
     }

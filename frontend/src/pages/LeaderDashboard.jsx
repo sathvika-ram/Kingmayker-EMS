@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
-import { BarChart3, CheckCircle, Clock3, LayoutDashboard, LogOut, Map, Menu, RefreshCw, Search, Users, X, ArrowLeft } from 'lucide-react';
+import { BarChart3, CheckCircle, Clock3, FileSpreadsheet, LayoutDashboard, LogOut, Map, Menu, RefreshCw, Search, Users, X, ArrowLeft } from 'lucide-react';
 import { API } from '../utils/api';
+import { ensureKhilaWarangalMandal } from '../utils/geography';
 
 const selectClass = 'rounded-md border border-[#b5c9c1] bg-white px-3 py-2 text-sm text-[#173b35] focus:border-[#1d6b5d]';
 
@@ -31,6 +33,7 @@ export default function LeaderDashboard() {
   const [regionalMetric, setRegionalMetric] = useState('total');
   const [constituencyCards, setConstituencyCards] = useState([]);
   const [constituencyCardsLoading, setConstituencyCardsLoading] = useState(true);
+  const [exportingConstituencyCounts, setExportingConstituencyCounts] = useState(false);
   const [constituencySearch, setConstituencySearch] = useState('');
   const [constituencySearchFocused, setConstituencySearchFocused] = useState(false);
   const [constituencyCardColumns, setConstituencyCardColumns] = useState(() => window.innerWidth >= 1536 ? 4 : window.innerWidth >= 1280 ? 3 : window.innerWidth >= 640 ? 2 : 1);
@@ -60,6 +63,29 @@ export default function LeaderDashboard() {
         loadRequestRef.current = null;
         if (!silent) setLoading(false);
       }
+    }
+  };
+
+  const exportConstituencyCounts = () => {
+    if (exportingConstituencyCounts || constituencyCardsLoading || !constituencyCards.length) return;
+    setExportingConstituencyCounts(true);
+    try {
+      const rows = constituencyCards.map(card => ({
+        Constituency: card.name,
+        'Total Enrolled': card.enrolled,
+        Approved: card.approved,
+        "Today's Enrollment": card.today
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      worksheet['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 20 }];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Constituency Counts');
+      const regionName = region || 'all-regions';
+      XLSX.writeFile(workbook, `constituency-counts-${regionName.toLowerCase().replace(/\s+/g, '-')}.xlsx`);
+    } catch {
+      setError('Unable to export constituency counts.');
+    } finally {
+      setExportingConstituencyCounts(false);
     }
   };
 
@@ -120,10 +146,13 @@ export default function LeaderDashboard() {
     if (!normalizedConstituency) { setMandals([]); return; }
     setMandal('');
     axios.get(`${API}/geo/mandals`, { params: { constituency: normalizedConstituency } })
-      .then(result => setMandals(Array.isArray(result.data) ? result.data.map(item => {
-        const normalizedItem = typeof item === 'string' ? { mandal: item } : item;
-        return { ...normalizedItem, mandal: normalizeGeographyName(normalizedItem.mandal) };
-      }) : []))
+      .then(result => {
+        const options = Array.isArray(result.data) ? result.data.map(item => {
+          const normalizedItem = typeof item === 'string' ? { mandal: item } : item;
+          return { ...normalizedItem, mandal: normalizeGeographyName(normalizedItem.mandal) };
+        }) : [];
+        setMandals(ensureKhilaWarangalMandal(normalizedConstituency, options));
+      })
       .catch(() => setError('Unable to load mandals.'));
   }, [constituency]);
   useEffect(() => { if (activeView !== 'overview') requestAnimationFrame(() => document.getElementById(activeView)?.scrollIntoView({ behavior: 'smooth', block: 'start' })); }, [activeView]);
@@ -175,7 +204,7 @@ export default function LeaderDashboard() {
         </nav>
       </aside>
       {sidebarOpen && <button type="button" aria-label="Close navigation overlay" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-30 bg-[#173b35]/40 lg:hidden" />}
-      <main className="min-w-0 flex-1 space-y-5 p-4 sm:p-8" id="overview"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b9b3a]">Leader dashboard</p><h2 className="mt-1 text-2xl font-bold">Regional performance</h2><p className="mt-1 text-sm text-[#64736f]">Live enrollment intelligence from the voter database.</p></div><button type="button" onClick={() => { loadDashboardData(); setRefreshKey(key => key + 1); }} title="Refresh data" aria-label="Refresh data" className="rounded-md border border-[#b5c9c1] bg-white p-2 text-[#1d6b5d] transition hover:bg-[#eef6f2]"><RefreshCw size={17} className={loading || constituencyCardsLoading ? 'animate-spin' : ''} /></button></div>
+      <main className="min-w-0 flex-1 space-y-5 p-4 sm:p-8" id="overview"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b9b3a]">Leader dashboard</p><h2 className="mt-1 text-2xl font-bold">Regional performance</h2><p className="mt-1 text-sm text-[#64736f]">Live enrollment intelligence from the voter database.</p></div><div className="flex items-center gap-2"><button type="button" onClick={exportConstituencyCounts} disabled={exportingConstituencyCounts || constituencyCardsLoading || !constituencyCards.length} className="flex items-center gap-2 rounded-md border border-[#b5c9c1] bg-white px-3 py-2 text-sm font-semibold text-[#1d6b5d] transition hover:bg-[#eef6f2] disabled:cursor-not-allowed disabled:opacity-50"><FileSpreadsheet size={17} />{exportingConstituencyCounts ? 'Preparing counts...' : 'Constituency counts XLS'}</button><button type="button" onClick={() => { loadDashboardData(); setRefreshKey(key => key + 1); }} title="Refresh data" aria-label="Refresh data" className="rounded-md border border-[#b5c9c1] bg-white p-2 text-[#1d6b5d] transition hover:bg-[#eef6f2]"><RefreshCw size={17} className={loading || constituencyCardsLoading ? 'animate-spin' : ''} /></button></div></div>
         <section className="rounded-lg border border-[#e4ebe7] bg-white p-4 shadow-sm" id="geography"><div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#52736a]"><Map size={16} /> Executive filters</div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><select value={region} onChange={event => setRegion(event.target.value)} className={selectClass}><option value="">All Regions</option>{regions.map(item => <option key={item.region} value={item.region}>{item.region}</option>)}</select><select value={constituency} onChange={event => setConstituency(event.target.value)} className={selectClass}><option value="">Select constituency</option>{constituencies.map(item => <option key={`${item.ac_no}-${item.assembly_constituency}`} value={item.assembly_constituency}>{item.assembly_constituency}</option>)}</select><select value={mandal} onChange={event => setMandal(event.target.value)} disabled={!constituency} className={selectClass}><option value="">All Mandals</option>{mandals.map(item => <option key={item.mandal} value={item.mandal}>{item.mandal}</option>)}</select><select value={status} onChange={event => setStatus(event.target.value)} className={selectClass}><option value="">All Statuses</option><option value="approved">Approved</option><option value="pending">Pending</option><option value="rejected">Rejected</option></select></div></section>
         {error && <div className="rounded-md border border-[#f0c8c2] bg-[#fff3f1] p-3 text-sm text-[#a84b43]">{error}</div>}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Metric icon={<Users size={19} />} label="Total enrollments" value={total} /><Metric icon={<BarChart3 size={19} />} label="Today's velocity" value={`+${today}`} /><Metric icon={<CheckCircle size={19} />} label="Verification approved" value={`${approvalRate}%`} /><Metric icon={<Clock3 size={19} />} label="Pending review" value={pending} /></div>
@@ -189,7 +218,7 @@ export default function LeaderDashboard() {
 }
 
 function SideLink({ icon, label, active, onClick }) { return <button type="button" onClick={onClick} className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-semibold transition ${active ? 'bg-white/15 text-[#d8f36a]' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}>{icon}{label}</button>; }
-function Metric({ icon, label, value }) { return <div className="rounded-lg border border-[#e4ebe7] bg-white p-4 shadow-sm"><div className="flex items-center gap-3"><span className="rounded-md bg-[#eef8f0] p-2 text-[#2f7c57]">{icon}</span><span className="text-xs font-semibold text-[#64736f]">{label}</span></div><div className="mt-3 text-3xl font-bold">{value}</div></div>; }
+function Metric({ icon, label, value }) { const displayLabel = label === "Today's velocity" ? "Today's Enrollment" : label; return <div className="rounded-lg border border-[#e4ebe7] bg-white p-4 shadow-sm"><div className="flex items-center gap-3"><span className="rounded-md bg-[#eef8f0] p-2 text-[#2f7c57]">{icon}</span><span className="text-xs font-semibold text-[#64736f]">{displayLabel}</span></div><div className="mt-3 text-3xl font-bold">{value}</div></div>; }
 function toLocalDateKey(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';

@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Activity, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, FileSpreadsheet, LayoutDashboard, LogOut, Map, Menu, RefreshCw, ShieldCheck, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { API } from '../utils/api';
+import { ensureKhilaWarangalMandal } from '../utils/geography';
 
 const inputClass = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10';
 const normalizeGeographyName = (value) => {
@@ -111,10 +112,13 @@ export default function SuperAdminDashboard() {
     if (!normalizedConstituency) { setMandals([]); return; }
     setFilters(current => ({ ...current, mandal: '' }));
     axios.get(`${API}/geo/mandals`, { params: { constituency: normalizedConstituency } })
-      .then(result => setMandals(Array.isArray(result.data) ? result.data.map(item => {
-        const next = typeof item === 'string' ? { mandal: item } : item;
-        return { ...next, mandal: normalizeGeographyName(next.mandal) };
-      }) : []))
+      .then(result => {
+        const options = Array.isArray(result.data) ? result.data.map(item => {
+          const next = typeof item === 'string' ? { mandal: item } : item;
+          return { ...next, mandal: normalizeGeographyName(next.mandal) };
+        }) : [];
+        setMandals(ensureKhilaWarangalMandal(normalizedConstituency, options));
+      })
       .catch(() => setError('Unable to load mandals.'));
   }, [filters.constituency]);
 
@@ -135,14 +139,16 @@ export default function SuperAdminDashboard() {
         limit: 100
       };
       const allRows = [];
-      let cursor = null;
-      do {
-        const result = await axios.get(`${API}/admin/enrollments`, { params: { ...params, ...(cursor ? { cursor } : {}) } });
-        allRows.push(...(result.data.voters || []));
-        const pagination = result.data.pagination || {};
-        if (pagination.has_more && !pagination.next_cursor) throw new Error('The export could not retrieve the next page.');
-        cursor = pagination.next_cursor || null;
-      } while (cursor);
+      const firstPage = await axios.get(`${API}/admin/enrollments`, { params: { ...params, page: 1 } });
+      allRows.push(...(firstPage.data.voters || []));
+      const totalPages = Number(firstPage.data.pagination?.total_pages || 1);
+      for (let page = 2; page <= totalPages; page += 4) {
+        const pages = Array.from({ length: Math.min(4, totalPages - page + 1) }, (_, index) => page + index);
+        const results = await Promise.all(pages.map(pageNumber =>
+          axios.get(`${API}/admin/enrollments`, { params: { ...params, page: pageNumber } })
+        ));
+        results.forEach(result => allRows.push(...(result.data.voters || [])));
+      }
 
       const workbook = XLSX.utils.book_new();
       const dateFilteredRows = applyDateRange ? allRows.filter(row => {
@@ -192,7 +198,7 @@ export default function SuperAdminDashboard() {
             Constituency: item.assembly_constituency,
             'Total Enrolled': Number(summary.metrics?.total || 0),
             Approved: Number(summary.metrics?.approved || 0),
-            "Today's Velocity": Number(today)
+            "Today's Enrollment": Number(today)
           };
         }));
         rows.push(...batch);
@@ -291,10 +297,13 @@ function InlineCoordinatorForm({ onCreated }) {
 
       if (normalized) {
         axios.get(`${API}/geo/mandals`, { params: { constituency: normalized } })
-          .then(response => setMandals(Array.isArray(response.data) ? response.data.map(item => {
-            const next = typeof item === 'string' ? { mandal: item } : item;
-            return { ...next, mandal: normalizeGeographyName(next.mandal) };
-          }) : []))
+          .then(response => {
+            const options = Array.isArray(response.data) ? response.data.map(item => {
+              const next = typeof item === 'string' ? { mandal: item } : item;
+              return { ...next, mandal: normalizeGeographyName(next.mandal) };
+            }) : [];
+            setMandals(ensureKhilaWarangalMandal(normalized, options));
+          })
           .catch(() => setError('Failed to load mandals.'));
       }
     }

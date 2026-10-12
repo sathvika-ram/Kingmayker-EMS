@@ -4,6 +4,7 @@ import imageCompression from 'browser-image-compression';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircle, Trash2, UploadCloud } from 'lucide-react';
 import { API } from '../utils/api';
+import { ensureKhilaWarangalMandal } from '../utils/geography';
 
 const inputClass = 'w-full rounded-md border border-[#9bb4ad] bg-white px-3 py-2.5 text-sm text-[#173b35] placeholder:text-[#a4bbb4] focus:border-[#1d6b5d] focus:outline-none focus:ring-2 focus:ring-[#1d6b5d]/20';
 const labelClass = 'mb-1 block text-xs font-semibold text-[#52736a]';
@@ -108,10 +109,13 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     setFormData(current => ({ ...current, mandal: '' }));
     if (!normalizedConstituency) return;
     axios.get(`${API}/geo/mandals`, { params: { constituency: normalizedConstituency } })
-      .then(response => setMandals(Array.isArray(response.data) ? response.data.map(item => {
-        const next = typeof item === 'string' ? { mandal: item } : item;
-        return { ...next, mandal: normalizeGeographyName(next.mandal) };
-      }) : []))
+      .then(response => {
+        const options = Array.isArray(response.data) ? response.data.map(item => {
+          const next = typeof item === 'string' ? { mandal: item } : item;
+          return { ...next, mandal: normalizeGeographyName(next.mandal) };
+        }) : [];
+        setMandals(ensureKhilaWarangalMandal(normalizedConstituency, options));
+      })
       .catch(() => setError('Failed to load mandals.'));
   }, [formData.constituency]);
 
