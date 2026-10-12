@@ -74,7 +74,7 @@ export default function LeaderDashboard() {
         Constituency: card.name,
         'Total Enrolled': card.enrolled,
         Approved: card.approved,
-        "Today's Enrollment": card.today
+        "Today's Enrollments": card.today
       }));
       const worksheet = XLSX.utils.json_to_sheet(rows);
       worksheet['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 20 }];
@@ -218,7 +218,7 @@ export default function LeaderDashboard() {
 }
 
 function SideLink({ icon, label, active, onClick }) { return <button type="button" onClick={onClick} className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-semibold transition ${active ? 'bg-white/15 text-[#d8f36a]' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}>{icon}{label}</button>; }
-function Metric({ icon, label, value }) { const displayLabel = label === "Today's velocity" ? "Today's Enrollment" : label; return <div className="rounded-lg border border-[#e4ebe7] bg-white p-4 shadow-sm"><div className="flex items-center gap-3"><span className="rounded-md bg-[#eef8f0] p-2 text-[#2f7c57]">{icon}</span><span className="text-xs font-semibold text-[#64736f]">{displayLabel}</span></div><div className="mt-3 text-3xl font-bold">{value}</div></div>; }
+function Metric({ icon, label, value }) { const displayLabel = label === "Today's velocity" ? "Today's Enrollments" : label; return <div className="rounded-lg border border-[#e4ebe7] bg-white p-4 shadow-sm"><div className="flex items-center gap-3"><span className="rounded-md bg-[#eef8f0] p-2 text-[#2f7c57]">{icon}</span><span className="text-xs font-semibold text-[#64736f]">{displayLabel}</span></div><div className="mt-3 text-3xl font-bold">{value}</div></div>; }
 function toLocalDateKey(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
