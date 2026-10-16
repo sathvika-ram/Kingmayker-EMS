@@ -157,7 +157,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
     if (name === 'email' && value && (!/^\S+@\S+\.[a-z]{2,}$/.test(value) || value !== value.toLowerCase())) return 'Enter a valid lowercase email.';
     if (name === 'voter_id' && value && !/^[A-Z0-9]{10}$/.test(value)) return 'Enter valid Voter ID.';
     if (name === 'aadhaar_number' && value && !/^[2-9]\d{11}$/.test(value)) return 'Enter a valid 12-digit Aadhaar number.';
-    if (name === 'acknowledgement_number' && value && !/^[A-Z0-9]{16,20}$/.test(value)) return 'Enter a valid Application ID: 16 to 20 uppercase letters or numbers.';
+    if (name === 'acknowledgement_number' && value && !/^[A-Z0-9]{16,20}$/.test(value)) return 'Enter a valid Application ID.';
     if (['voter_name', 'surname', 'father_name'].includes(name) && value && !/^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(value)) return 'Use alphabets only.';
     if (['village', 'complete_address', 'post_office', 'notes'].includes(name) && value && !/^[\x00-\x7F]*$/.test(value)) return 'Please use English characters only.';
     if (name === 'pincode' && value && !/^\d{6}$/.test(value)) return 'Pincode must be exactly 6 digits.';
@@ -243,7 +243,7 @@ export default function EnrollmentForm({ coordinatorId, onSubmitted }) {
         <section className="space-y-4 rounded-lg border border-[#e4ebe7] bg-[#f7faf8] p-4 sm:p-5">
           <h3 className="border-b border-[#e4ebe7] pb-2 text-sm font-bold text-[#52736a]">Personal details</h3>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={<><span>Application ID</span>{requiredStar}</>} name="acknowledgement_number" value={formData.acknowledgement_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.acknowledgement_number} required maxLength={20} placeholder="16 to 20 letters or numbers" />
+            <Field label={<><span>Application ID</span>{requiredStar}</>} name="acknowledgement_number" value={formData.acknowledgement_number} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.acknowledgement_number} required maxLength={20} placeholder="Enter valid Application ID" />
             <Field label={<><span>Voter ID</span><span className="ml-1 font-normal text-[#849890]">(optional)</span></>} name="voter_id" value={formData.voter_id} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.voter_id} maxLength={10} placeholder="Enter Voter ID" />
             <Field label={<><span>Name</span>{requiredStar}</>} name="voter_name" value={formData.voter_name} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.voter_name} required placeholder="First name" maxLength={MAX_FIELD_LENGTHS.voter_name} />
             <Field label="Surname (if any)" name="surname" value={formData.surname} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.surname} placeholder="Surname" maxLength={MAX_FIELD_LENGTHS.surname} />
