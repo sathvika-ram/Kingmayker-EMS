@@ -138,6 +138,7 @@ async function ensureVoterColumns() {
         ADD COLUMN IF NOT EXISTS aadhaar_number VARCHAR(12)
     `);
     await pool.query('ALTER TABLE voters ALTER COLUMN voter_id DROP NOT NULL');
+    await pool.query('ALTER TABLE voters ALTER COLUMN acknowledgement_number TYPE VARCHAR(20)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region VARCHAR(120)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_mandal VARCHAR(120)');
@@ -530,7 +531,7 @@ app.post('/api/voters/enroll', authenticateToken, requireRoles('constituency_coo
         if ([complete_address, village, district, post_office, notes].some(value => value && !/^[\x00-\x7F]*$/.test(String(value)))) return res.status(400).json({ error: 'Please use English characters only.' });
         if (normalizedVoterId && !/^[A-Z0-9]{10}$/.test(normalizedVoterId)) return res.status(400).json({ error: 'Enter a valid Voter ID: exactly 10 uppercase letters or numbers.' });
         if (normalizedAadhaarNumber && !/^[2-9]\d{11}$/.test(normalizedAadhaarNumber)) return res.status(400).json({ error: 'Enter a valid 12-digit Aadhaar number.' });
-        if (!/^[A-Z0-9]{16}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid Application ID: exactly 16 uppercase letters or numbers.' });
+        if (!/^[A-Z0-9]{16,20}$/.test(normalizedAcknowledgementNumber)) return res.status(400).json({ error: 'Enter a valid Application ID: 16 to 20 uppercase letters or numbers.' });
         if (voterEmail && !/^\S+@\S+\.[a-z]{2,}$/i.test(voterEmail)) return res.status(400).json({ error: 'Enter a valid email address.' });
         if (normalizedPincode && !/^\d{6}$/.test(normalizedPincode)) return res.status(400).json({ error: 'Check the pincode.' });
         const submittedDocumentUrls = Array.isArray(req.body.degree_certificate_urls)

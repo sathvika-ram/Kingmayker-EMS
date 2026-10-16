@@ -161,7 +161,6 @@ export default function SuperAdminDashboard() {
         delete next.degree_certificate_url;
         delete next.degree_certificate_urls;
         delete next.photo_url;
-        delete next.created_at;
         delete next.updated_at;
         delete next.citizenship_status;
         delete next.nationality;
